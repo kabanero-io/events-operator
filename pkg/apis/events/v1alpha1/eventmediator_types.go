@@ -44,7 +44,7 @@ type EventMediation struct {
   TBD: switch and default
 */
 type EventStatement struct {
-    If    *string `json:"?"`
+    If    *string `json:"if"`
     Assign  *string `json:"="`
     Switch  *[]EventStatement `json:"switch",omitempty`
     Body *[]EventStatement `json:"body",omitempty`
