@@ -1,0 +1,108 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: eventconnections.events.kabanero.io
+spec:
+  group: events.kabanero.io
+  names:
+    kind: EventConnections
+    listKind: EventConnectionsList
+    plural: eventconnections
+    singular: eventconnections
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      description: EventConnections is the Schema for the eventconnections API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: EventConnectionsSpec defines the desired state of EventConnections
+          properties:
+            connections:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "operator-sdk generate k8s" to regenerate code after
+                modifying this file Add custom validation using kubebuilder tags:
+                https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              items:
+                description: ' Connections are from subscriber to publishers    from
+                  sender to receivers'
+                properties:
+                  from:
+                    properties:
+                      group:
+                        type: string
+                      id:
+                        type: string
+                      kind:
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    required:
+                    - group
+                    - id
+                    - kind
+                    - name
+                    - namespace
+                    type: object
+                  to:
+                    items:
+                      properties:
+                        group:
+                          type: string
+                        id:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                      required:
+                      - group
+                      - id
+                      - kind
+                      - name
+                      - namespace
+                      type: object
+                    type: array
+                required:
+                - from
+                - to
+                type: object
+              type: array
+          required:
+          - connections
+          type: object
+        status:
+          description: EventConnectionsStatus defines the observed state of EventConnections
+          properties:
+            message:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "operator-sdk generate k8s" to regenerate
+                code after modifying this file Add custom validation using kubebuilder
+                tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              type: string
+          required:
+          - message
+          type: object
+      type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true

@@ -1,0 +1,7 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventExternalListener
+metadata:
+  name: example-eventexternallistener
+spec:
+  # Add fields here
+  size: 3

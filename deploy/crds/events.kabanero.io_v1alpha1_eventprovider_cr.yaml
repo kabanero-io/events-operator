@@ -1,0 +1,7 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventProvider
+metadata:
+  name: example-eventprovider
+spec:
+  # Add fields here
+  size: 3

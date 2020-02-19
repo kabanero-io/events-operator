@@ -1,0 +1,7 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventExternalProvider
+metadata:
+  name: example-eventexternalprovider
+spec:
+  # Add fields here
+  size: 3

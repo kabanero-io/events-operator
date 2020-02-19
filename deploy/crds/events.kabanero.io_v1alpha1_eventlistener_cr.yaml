@@ -1,0 +1,7 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventListener
+metadata:
+  name: example-eventlistener
+spec:
+  # Add fields here
+  size: 3

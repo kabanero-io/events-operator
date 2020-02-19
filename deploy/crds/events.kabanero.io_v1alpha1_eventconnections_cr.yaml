@@ -1,0 +1,7 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: example-eventconnections
+spec:
+  # Add fields here
+  size: 3
