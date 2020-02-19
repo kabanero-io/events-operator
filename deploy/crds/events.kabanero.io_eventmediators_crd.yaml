@@ -48,18 +48,18 @@ spec:
                           properties:
                             =:
                               type: string
-                            '?':
-                              type: string
                             body:
                               items: {}
                               type: array
+                            if:
+                              type: string
                             switch:
                               items: {}
                               type: array
                           required:
                           - =
-                          - '?'
                           - body
+                          - if
                           - switch
                           type: object
                         type: array
@@ -85,18 +85,18 @@ spec:
                           properties:
                             =:
                               type: string
-                            '?':
-                              type: string
                             body:
                               items: {}
                               type: array
+                            if:
+                              type: string
                             switch:
                               items: {}
                               type: array
                           required:
                           - =
-                          - '?'
                           - body
+                          - if
                           - switch
                           type: object
                         type: array
