@@ -1,7 +1,0 @@
-apiVersion: events.kabanero.io/v1alpha1
-kind: EventGateway
-metadata:
-  name: example-eventgateway
-spec:
-  # Add fields here
-  size: 3

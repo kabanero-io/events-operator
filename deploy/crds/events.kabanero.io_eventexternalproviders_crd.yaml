@@ -31,9 +31,32 @@ spec:
           type: object
         spec:
           description: EventExternalProviderSpec defines the desired state of EventExternalProvider
+          properties:
+            timeout:
+              type: string
+            type:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "operator-sdk generate k8s" to regenerate code after
+                modifying this file Add custom validation using kubebuilder tags:
+                https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              type: string
+            url:
+              type: string
+          required:
+          - type
+          - url
           type: object
         status:
           description: EventExternalProviderStatus defines the observed state of EventExternalProvider
+          properties:
+            message:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "operator-sdk generate k8s" to regenerate
+                code after modifying this file Add custom validation using kubebuilder
+                tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              type: string
+          required:
+          - message
           type: object
       type: object
   version: v1alpha1
