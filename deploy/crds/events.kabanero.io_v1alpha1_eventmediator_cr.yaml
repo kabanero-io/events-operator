@@ -3,5 +3,4 @@ kind: EventMediator
 metadata:
   name: example-eventmediator
 spec:
-  # Add fields here
-  size: 3
+  code: []
