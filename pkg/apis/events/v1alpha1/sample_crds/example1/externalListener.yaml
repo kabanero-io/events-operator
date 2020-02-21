@@ -1,0 +1,6 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventExternalListener
+metadata:
+  name: external-listener-1
+spec:
+  url: https://servicename

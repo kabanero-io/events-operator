@@ -1,0 +1,8 @@
+iapiVersion: events.kabanero.io/v1alpha1
+kind: EventExternalProvider
+metadata:
+  name: nats-provider-1
+spec:
+  type: nats
+  url: nats://127.0.0.1:4222
+  timeout: 8760h

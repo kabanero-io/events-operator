@@ -1,0 +1,38 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: example-eventconnections
+  namespace: default
+spec:
+  connections:
+     - from:
+         kind: EventMediator
+         name: switchboard-mediator
+         id: library1/github-switchboard
+       to:
+         - kind: ExternalTopic
+           name: nats-topic
+     - from:
+         kind: EventMediator
+         name: switchboard-mediator
+         id: library1/github-event-switchboard/githubdest
+       to:
+        - group: tekton.dev
+          kind: EventListener
+          name: listener1
+        - kind: ExternalListener
+          name: some-other-listener
+     - from:
+         kind: EventMediator
+         name:  switchboard-mediator
+         id: library1/github-event-switchboard/otherDest
+       to:
+        - kind: ExternalListener
+          name: external-listener1
+     - from:
+         kind: EventMediator
+         name:  http-listener
+         id: listener1
+       to:
+        - kind: ExternalListener
+          name: external-listener1

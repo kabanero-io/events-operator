@@ -1,0 +1,15 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: http-listener
+spec:
+  listeners:
+    - httpPort: 9080
+      createService: true
+      createRoute: true
+  mediations:
+    - mediation:
+        name: listener1
+        sendTo: [ "dest" ]
+        body:
+          = : 'sendEvent(dest, message.body, message.header)'

@@ -78,6 +78,9 @@ rules:
   - eventgateways
   - eventexternalproviders
   - eventexternaltopics
+  - eventcodes
+  - eventmediations
+  - eventfunctions
   verbs:
   - create
   - delete
