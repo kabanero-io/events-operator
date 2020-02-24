@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/events-operator/pkg/controller/eventmediator"
+	"github.com/kabanero-io/events-operator/pkg/controller/eventmediator"
 )
 
 func init() {

@@ -1,1 +1,1 @@
-# events-oprator
+# events-operator

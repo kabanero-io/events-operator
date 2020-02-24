@@ -12,9 +12,9 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
-	"github.com/events-operator/pkg/apis"
-	"github.com/events-operator/pkg/controller"
-	"github.com/events-operator/version"
+	"github.com/kabanero-io/events-operator/pkg/apis"
+	"github.com/kabanero-io/events-operator/pkg/controller"
+	"github.com/kabanero-io/events-operator/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"

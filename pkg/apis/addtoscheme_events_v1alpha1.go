@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/events-operator/pkg/apis/events/v1alpha1"
+	"github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 )
 
 func init() {
