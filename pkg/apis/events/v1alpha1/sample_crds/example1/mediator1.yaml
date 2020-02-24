@@ -1,6 +1,6 @@
 apiVersion: events.kabanero.io/v1alpha1
 kind: EventMediator
 metadata:
-  name: switchboard-mediator
+  name: webhook-switchboard
 spec:
-  importMediations: [library1]
+  importMediations: [ "webhook-switchboard" ]

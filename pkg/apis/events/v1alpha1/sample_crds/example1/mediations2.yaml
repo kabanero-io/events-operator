@@ -1,0 +1,12 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediations
+metadata:
+  name: library1
+spec:
+  mediations:
+    - function:
+        name: filterGithubHeader
+        input: inputHeader
+        output: outputHeader
+        body:
+          = : 'outputHeader = filter(inputHeader, ""key.startsWith(\"X-Github\") || key == \"X-Hub-Signature\" " )'

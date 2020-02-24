@@ -1,10 +1,10 @@
 apiVersion: events.kabanero.io/v1alpha1
 kind: EventMediator
 metadata:
-  name: http-listener
+  name: https-listener
 spec:
   listeners:
-    - httpPort: 9080
+    - httpsPort: 9080
       createService: true
       createRoute: true
   mediations:

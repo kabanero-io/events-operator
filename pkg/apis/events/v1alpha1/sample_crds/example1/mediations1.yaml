@@ -1,21 +1,17 @@
 apiVersion: events.kabanero.io/v1alpha1
 kind: EventMediations
 metadata:
-  name: library1
+  name: webhook-switchboard
 spec:
   mediations:
     - mediation:
-        name: github-event-switchboard
-        sendTo: [ "githubDest" , "otherDest" ]
+        name: webhook-switchboard
+        sendTo: [ "githubDest" , "dockerDest", "defaultDest" ]
         body:
           - switch:
               - if: 'has(message.header["X-Github-Event"])'
                 = : 'sendEvent(githubDest, message.body, filterGithubHeader(message.header))'
+              - if : 'has(message.callback_url) && message.callback_url.matches("*docker*") '
+                = : 'sendEvent(dockerDest, message.body, message.header)'
               - default:
-                = : 'sendEvent(otherDest, message.body, message.header)'
-    - function:
-        name: filterGithubHeader
-        input: inputHeader
-        output: outputHeader
-        body:
-          = : 'outputHeader = filter(inputHeader, ""key.startsWith(\"X-Github\") || key == \"X-Hub-Signature\" " )'
+                = : 'sendEvent(defaultDest, message.body, message.header)'
