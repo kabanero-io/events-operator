@@ -1,3 +1,6 @@
+# Executables
+/manager
+
 # Temporary Build Files
 build/_output
 build/_test
@@ -75,3 +78,6 @@ tags
 .vscode/*
 .history
 # End of https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
+
+### GoLand ###
+.idea
