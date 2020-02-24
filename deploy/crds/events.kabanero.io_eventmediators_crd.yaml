@@ -93,7 +93,85 @@ spec:
                           of cluster Important: Run "operator-sdk generate k8s" to
                           regenerate code after modifying this file Add custom validation
                           using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
-                        items: {}
+                        items:
+                          properties:
+                            function:
+                              properties:
+                                body:
+                                  items:
+                                    description: ' Valid combinations are:   1) assignment   2)
+                                      if and assignment   3) if and body   4) switch   5)
+                                      if and switch   TBD: switch and default'
+                                    properties:
+                                      =:
+                                        type: string
+                                      body:
+                                        items: {}
+                                        type: array
+                                      if:
+                                        type: string
+                                      switch:
+                                        items: {}
+                                        type: array
+                                    required:
+                                    - =
+                                    - body
+                                    - if
+                                    - switch
+                                    type: object
+                                  type: array
+                                input:
+                                  type: string
+                                name:
+                                  type: string
+                                output:
+                                  type: string
+                              required:
+                              - body
+                              - input
+                              - name
+                              - output
+                              type: object
+                            mediation:
+                              properties:
+                                body:
+                                  items:
+                                    description: ' Valid combinations are:   1) assignment   2)
+                                      if and assignment   3) if and body   4) switch   5)
+                                      if and switch   TBD: switch and default'
+                                    properties:
+                                      =:
+                                        type: string
+                                      body:
+                                        items: {}
+                                        type: array
+                                      if:
+                                        type: string
+                                      switch:
+                                        items: {}
+                                        type: array
+                                    required:
+                                    - =
+                                    - body
+                                    - if
+                                    - switch
+                                    type: object
+                                  type: array
+                                name:
+                                  type: string
+                                sendTo:
+                                  items:
+                                    type: string
+                                  type: array
+                              required:
+                              - body
+                              - name
+                              - sendTo
+                              type: object
+                          required:
+                          - function
+                          - mediation
+                          type: object
                         type: array
                     required:
                     - mediations

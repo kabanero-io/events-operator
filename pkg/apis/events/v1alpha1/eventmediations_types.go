@@ -12,10 +12,10 @@ type EventMediationsSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-    Mediations []EventMediations `json:"mediations"`
+    Mediations []MediationsImpl `json:"mediations"`
 }
 
-type EventMediations struct {
+type MediationsImpl struct {
     Mediation *EventMediationImpl `json:"mediation"`
     Function *EventFunctionImpl `json:"function"`
 }
