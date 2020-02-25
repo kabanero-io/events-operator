@@ -31,8 +31,8 @@ type MediationsImpl struct {
 type EventStatement struct {
     If    *string `json:"if"`
     Assign  *string `json:"="`
-    Switch  *[]EventStatement `json:"switch",omitempty`
-    Body *[]EventStatement `json:"body",omitempty`
+    Switch  *[]EventStatement `json:"switch,omitempty"`
+    Body *[]EventStatement `json:"body,omitempty"`
 }
 
 
@@ -45,8 +45,8 @@ type  EventFunctionImpl struct {
 
 type EventMediationImpl  struct {
     Name string `json:"name"`
-    SendTo []string `json:"sendTo",omitempty`
-    Body []EventStatement `json:"body",omitempty`
+    SendTo []string `json:"sendTo,omitempty"`
+    Body []EventStatement `json:"body,omitempty"`
 }
 
 // EventMediationsStatus defines the observed state of EventMediations

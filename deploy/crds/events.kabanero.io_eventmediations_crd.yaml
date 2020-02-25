@@ -58,9 +58,7 @@ spec:
                               type: array
                           required:
                           - =
-                          - body
                           - if
-                          - switch
                           type: object
                         type: array
                       input:
@@ -95,9 +93,7 @@ spec:
                               type: array
                           required:
                           - =
-                          - body
                           - if
-                          - switch
                           type: object
                         type: array
                       name:
@@ -107,9 +103,7 @@ spec:
                           type: string
                         type: array
                     required:
-                    - body
                     - name
-                    - sendTo
                     type: object
                 required:
                 - function

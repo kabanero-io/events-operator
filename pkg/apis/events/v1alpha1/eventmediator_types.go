@@ -12,19 +12,19 @@ type EventMediatorSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-    Listeners *[]EventListenerConfig `json:"listeners",omitempty` // default is no listener
-    importMediations  *[]string `json:"importMediations",omitempty` // default is to import everything unless code is specified
+    Listeners *[]EventListenerConfig `json:"listeners,omitempty"` // default is no listener
+    importMediations  *[]string `json:"importMediations,omitempty"` // default is to import everything unless code is specified
     Mediations *[]EventMediations `json:"mediations"`
 }
 
 
 type EventListenerConfig struct {
-    Name string  `json:"name",omitempty`  // name of the listener configuration. Default is the name of the MediatorSpec
+    Name string  `json:"name,omitempty"`  // name of the listener configuration. Default is the name of the MediatorSpec
     Mediations []string `json:"mediations"` // if not specified, applies to all mediations
-    HttpPort    int         `json:"httpPort",omitempty`
-    HttpsPort   int         `json:"httpsPort",omitempty`
-    CreateService bool `json:"createService",omitempty`
-    CreateRoute bool      `json:"createRoute",omitempty`
+    HttpPort    int         `json:"httpPort,omitempty"`
+    HttpsPort   int         `json:"httpsPort,omitempty"`
+    CreateService bool `json:"createService,omitempty"`
+    CreateRoute bool      `json:"createRoute,omitempty"`
 }
 
 // EventMediatorStatus defines the observed state of EventMediator

@@ -53,11 +53,8 @@ spec:
                       namespace:
                         type: string
                     required:
-                    - group
-                    - id
                     - kind
                     - name
-                    - namespace
                     type: object
                   to:
                     items:
@@ -73,11 +70,8 @@ spec:
                         namespace:
                           type: string
                       required:
-                      - group
-                      - id
                       - kind
                       - name
-                      - namespace
                       type: object
                     type: array
                 required:
