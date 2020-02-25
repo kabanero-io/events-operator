@@ -1,4 +1,4 @@
-module github.com/events-operator
+module github.com/kabanero-io/events-operator
 
 go 1.13
 
