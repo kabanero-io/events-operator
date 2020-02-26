@@ -1,4 +1,4 @@
-.PHONY: generate build build-all format test
+.PHONY: generate install build build-all format test
 
 CRDS = $(wildcard deploy/crds/*_crd.yaml)
 OPERATOR_FLAGS = --zap-level=debug --zap-encoder=console
