@@ -62,113 +62,77 @@ spec:
               type: array
             mediations:
               items:
-                description: EventMediations is the Schema for the eventmediations
-                  API
                 properties:
-                  apiVersion:
-                    description: 'APIVersion defines the versioned schema of this
-                      representation of an object. Servers should convert recognized
-                      schemas to the latest internal value, and may reject unrecognized
-                      values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
-                    type: string
-                  kind:
-                    description: 'Kind is a string value representing the REST resource
-                      this object represents. Servers may infer this from the endpoint
-                      the client submits requests to. Cannot be updated. In CamelCase.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
-                    type: string
-                  metadata:
-                    type: object
-                  spec:
-                    description: EventMediationsSpec defines the desired state of
-                      EventMediations
+                  function:
                     properties:
-                      mediations:
-                        description: 'INSERT ADDITIONAL SPEC FIELDS - desired state
-                          of cluster Important: Run "operator-sdk generate k8s" to
-                          regenerate code after modifying this file Add custom validation
-                          using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+                      body:
                         items:
+                          description: ' Valid combinations are:   1) assignment   2)
+                            if and assignment   3) if and body   4) switch   5) if
+                            and switch   TBD: switch and default'
                           properties:
-                            function:
-                              properties:
-                                body:
-                                  items:
-                                    description: ' Valid combinations are:   1) assignment   2)
-                                      if and assignment   3) if and body   4) switch   5)
-                                      if and switch   TBD: switch and default'
-                                    properties:
-                                      =:
-                                        type: string
-                                      body:
-                                        items: {}
-                                        type: array
-                                      if:
-                                        type: string
-                                      switch:
-                                        items: {}
-                                        type: array
-                                    required:
-                                    - =
-                                    - if
-                                    type: object
-                                  type: array
-                                input:
-                                  type: string
-                                name:
-                                  type: string
-                                output:
-                                  type: string
-                              required:
-                              - body
-                              - input
-                              - name
-                              - output
-                              type: object
-                            mediation:
-                              properties:
-                                body:
-                                  items:
-                                    description: ' Valid combinations are:   1) assignment   2)
-                                      if and assignment   3) if and body   4) switch   5)
-                                      if and switch   TBD: switch and default'
-                                    properties:
-                                      =:
-                                        type: string
-                                      body:
-                                        items: {}
-                                        type: array
-                                      if:
-                                        type: string
-                                      switch:
-                                        items: {}
-                                        type: array
-                                    required:
-                                    - =
-                                    - if
-                                    type: object
-                                  type: array
-                                name:
-                                  type: string
-                                sendTo:
-                                  items:
-                                    type: string
-                                  type: array
-                              required:
-                              - name
-                              type: object
+                            =:
+                              type: string
+                            body:
+                              items: {}
+                              type: array
+                            if:
+                              type: string
+                            switch:
+                              items: {}
+                              type: array
                           required:
-                          - function
-                          - mediation
+                          - =
+                          - if
                           type: object
                         type: array
+                      input:
+                        type: string
+                      name:
+                        type: string
+                      output:
+                        type: string
                     required:
-                    - mediations
+                    - body
+                    - input
+                    - name
+                    - output
                     type: object
-                  status:
-                    description: EventMediationsStatus defines the observed state
-                      of EventMediations
+                  mediation:
+                    properties:
+                      body:
+                        items:
+                          description: ' Valid combinations are:   1) assignment   2)
+                            if and assignment   3) if and body   4) switch   5) if
+                            and switch   TBD: switch and default'
+                          properties:
+                            =:
+                              type: string
+                            body:
+                              items: {}
+                              type: array
+                            if:
+                              type: string
+                            switch:
+                              items: {}
+                              type: array
+                          required:
+                          - =
+                          - if
+                          type: object
+                        type: array
+                      name:
+                        type: string
+                      sendTo:
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - name
                     type: object
+                required:
+                - function
+                - mediation
                 type: object
               type: array
           required:

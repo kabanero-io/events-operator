@@ -677,8 +677,8 @@ func (in *EventMediatorSpec) DeepCopyInto(out *EventMediatorSpec) {
 			}
 		}
 	}
-	if in.importMediations != nil {
-		in, out := &in.importMediations, &out.importMediations
+	if in.ImportMediations != nil {
+		in, out := &in.ImportMediations, &out.ImportMediations
 		*out = new([]string)
 		if **in != nil {
 			in, out := *in, *out
@@ -688,10 +688,10 @@ func (in *EventMediatorSpec) DeepCopyInto(out *EventMediatorSpec) {
 	}
 	if in.Mediations != nil {
 		in, out := &in.Mediations, &out.Mediations
-		*out = new([]EventMediations)
+		*out = new([]MediationsImpl)
 		if **in != nil {
 			in, out := *in, *out
-			*out = make([]EventMediations, len(*in))
+			*out = make([]MediationsImpl, len(*in))
 			for i := range *in {
 				(*in)[i].DeepCopyInto(&(*out)[i])
 			}
