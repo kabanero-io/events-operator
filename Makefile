@@ -1,5 +1,8 @@
 .PHONY: generate build build-all format test
 
+CRDS = $(wildcard deploy/crds/*_crd.yaml)
+OPERATOR_FLAGS = --zap-level=debug --zap-encoder=console
+
 format:
 	go fmt ./cmd/... ./pkg/...
 
@@ -15,10 +18,14 @@ build:
 
 build-all: generate build
 
-install:
-	find deploy/crds -name "*_crd.yaml" | xargs -I{} oc apply -f {}
+.install: $(CRDS)
+	echo $(CRDS) | tr ' ' '\n' | xargs -I{} oc apply -f {}
+	touch .install
 
-run-local: install
-	operator-sdk run --local
+install: .install
 
+run-local: .install
+	operator-sdk run --local --operator-flags="$(OPERATOR_FLAGS)"
 
+debug: .install
+	operator-sdk run --local --enable-delve --operator-flags="$(OPERATOR_FLAGS)"

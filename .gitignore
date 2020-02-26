@@ -1,5 +1,6 @@
 # Executables
 /manager
+/.install
 
 # Temporary Build Files
 build/_output
