@@ -4,7 +4,7 @@ import (
 //	"context"
 	"sync"
 
-	eventsv1alpha1 "github.com/events-operator/pkg/apis/events/v1alpha1"
+	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 //	corev1 "k8s.io/api/core/v1"
 //	"k8s.io/apimachinery/pkg/api/errors"
 	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,7 +21,7 @@ import (
 )
 
 
-/* REturn true if str is an element of array of string */
+/* Return true if str is an element of array of string */
 func stringInArray(stringArray []string, str string) bool {
     for _, stringInArray := range stringArray {
        if stringInArray == str {
@@ -64,7 +64,7 @@ func (executor *EventMediationImplManager) Stop () {
 type MediationsManager struct {
    manager *EventManager    // top level manager
    mediator *eventsv1alpha1.EventMediator // the mediator that imports the mediations
-   mediations *eventsv1alpha1.EventMediations // The meditionas resource being imported.
+   mediations *eventsv1alpha1.EventMediations // The mediations resource being imported.
    implManagers map[string]*EventMediationImplManager  // manager for each MediationIMpl
 }
 
