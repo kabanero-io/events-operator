@@ -761,6 +761,17 @@ func (in *EventStatement) DeepCopyInto(out *EventStatement) {
 			}
 		}
 	}
+	if in.Default != nil {
+		in, out := &in.Default, &out.Default
+		*out = new([]EventStatement)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]EventStatement, len(*in))
+			for i := range *in {
+				(*in)[i].DeepCopyInto(&(*out)[i])
+			}
+		}
+	}
 	return
 }
 

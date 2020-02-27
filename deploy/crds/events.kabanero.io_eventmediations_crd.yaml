@@ -51,6 +51,9 @@ spec:
                             body:
                               items: {}
                               type: array
+                            default:
+                              items: {}
+                              type: array
                             if:
                               type: string
                             switch:
@@ -84,6 +87,9 @@ spec:
                             =:
                               type: string
                             body:
+                              items: {}
+                              type: array
+                            default:
                               items: {}
                               type: array
                             if:

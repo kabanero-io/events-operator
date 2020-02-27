@@ -167,6 +167,14 @@ type EventManager struct {
     mutex  sync.Mutex // mutex
 }
 
+
+func (mgr *EventManager) GetFunction(name string) (*eventsv1alpha1.EventFunctionImpl, bool) {
+    mgr.mutex.Lock()
+    defer mgr.mutex.Unlock()
+    obj, ok := mgr.functions[name]
+    return obj, ok
+}
+
 func (mgr *EventManager) addEventMediator(mediator *eventsv1alpha1.EventMediator) {
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()

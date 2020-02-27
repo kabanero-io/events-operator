@@ -33,6 +33,7 @@ type EventStatement struct {
     Assign  *string `json:"="`
     Switch  *[]EventStatement `json:"switch,omitempty"`
     Body *[]EventStatement `json:"body,omitempty"`
+    Default *[]EventStatement `json:"default,omitempty"`
 }
 
 
@@ -45,6 +46,7 @@ type  EventFunctionImpl struct {
 
 type EventMediationImpl  struct {
     Name string `json:"name"`
+    Input string `json:"name"`
     SendTo []string `json:"sendTo,omitempty"`
     Body []EventStatement `json:"body,omitempty"`
 }
