@@ -6,6 +6,7 @@ spec:
   mediations:
     - mediation:
         name: webhook-switchboard
+        input: message
         sendTo: [ "githubDest" , "dockerDest", "defaultDest" ]
         body:
           - switch:
