@@ -5,19 +5,39 @@ import (
 
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+    appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	// "k8s.io/apimachinery/pkg/types"
+    "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	// "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+    "os"
+    "strconv"
 )
+
+const (
+    MEDIATOR_NAME = "MEDIATOR_NAME" // environment variable 
+)
+
+/* This controller can serve as either an operator, or a controller.
+  As an operator, for manages Deployments for each EventMEdiator crd instance
+ As a controller, the environment variable MEDIATOR_NAME is set to the name of the mediator, and it is responsible for
+ updates one EventMediator CRD instance.
+*/
+var MediatorName string
+var isOperator bool = false
+
+func init () {
+    MediatorName :=  os.Getenv(MEDIATOR_NAME)
+    isOperator = (MediatorName == "")
+}
 
 var log = logf.Log.WithName("controller_eventmediator")
 
@@ -51,15 +71,18 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
-	// Watch for changes to secondary resource Pods and requeue the owner EventMediator
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &eventsv1alpha1.EventMediator{},
-	})
-	if err != nil {
-		return err
-	}
+    // Watch for deployments
+    if isOperator {
+        err = c.Watch(
+        &source.Kind{Type: &appsv1.Deployment{}},
+        &handler.EnqueueRequestForOwner{
+            IsController: true,
+            OwnerType:    &eventsv1alpha1.EventMediator{}},
+        )
+	    if err != nil {
+		    return err
+        }
+    } 
 
 	return nil
 }
@@ -96,9 +119,157 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 			// Return and don't requeue
 			return reconcile.Result{}, nil
 		}
+
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
+    if isOperator {
+        /* Operator that manages Deployments for mediators.  */
+
+        /* Check if the deployment already exists, if not create a new one */
+        deployment := &appsv1.Deployment{}
+        err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
+        if err != nil && errors.IsNotFound(err) {
+            // Define a new deployment
+            dep := r.deploymentForEventMediator(instance)
+            reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+            err = r.client.Create(context.TODO(), dep)
+            if err != nil {
+                reqLogger.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+                return reconcile.Result{}, err
+            }
+            // Deployment created successfully - return and requeue
+            return reconcile.Result{Requeue: true}, nil
+        } else if err != nil {
+            reqLogger.Error(err, "Failed to get Deployment")
+            return reconcile.Result{}, err
+        }
+
+
+        if portChanged(deployment, instance)  {
+            deployment.Spec.Template.Spec.Containers[0].Ports = generateDeploymentPorts(instance)
+            err = r.client.Update(context.TODO(), deployment)
+            if err != nil {
+               reqLogger.Error(err, "Failed to update Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
+                return reconcile.Result{}, err
+             }
+            // Spec updated - return and requeue
+            return reconcile.Result{Requeue: true}, nil
+        }
+    } else {
+        /* plain controller for one mediator */
+        if instance.ObjectMeta.Name ==  MEDIATOR_NAME {
+            /* TODO: We should handle this */
+        }
+    }
+
 	return reconcile.Result{}, nil
+}
+
+/* Return true if the ports in a Deployment have changed */
+func portChanged(deployment *appsv1.Deployment, mediator *eventsv1alpha1.EventMediator) bool {
+
+    ports := deployment.Spec.Template.Spec.Containers[0].Ports
+    listeners := mediator.Spec.Listeners
+
+    check := make(map[int32] int32)
+    for _, portInfo := range ports {
+        check[portInfo.ContainerPort] = portInfo.ContainerPort
+    }
+
+    numMediatorPorts := 0
+    if listeners != nil {
+       for _, listener := range *listeners {
+           if listener.HttpPort != 0 {
+               numMediatorPorts++
+               if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
+                   return true
+               }
+           }
+           if listener.HttpsPort != 0 {
+               numMediatorPorts++
+               if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
+                   return true
+               }
+            }
+       }
+    }
+    if len(ports) != numMediatorPorts {
+         return true
+    }
+
+    return false
+}
+
+func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.ContainerPort {
+    var ports []corev1.ContainerPort = make([]corev1.ContainerPort, 0);
+    if mediator.Spec.Listeners != nil {
+        for index, listener := range *mediator.Spec.Listeners {
+            var port int32
+            if listener.HttpPort != 0 {
+                 port = int32(listener.HttpPort)
+                 ports = append(ports, corev1.ContainerPort {
+                        ContainerPort: port,
+                        Name:          "httpPort-"+ strconv.Itoa(index),
+                   } )
+            }
+            if listener.HttpsPort != 0 {
+                 port = int32(listener.HttpsPort)
+                 ports = append(ports, corev1.ContainerPort {
+                        ContainerPort:  port,
+                        Name:          "httpsPort-"+strconv.Itoa(index),
+                   } )
+            }
+        }
+    }
+    return ports
+}
+
+// deploymentForMemcached returns a memcached Deployment object
+func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1alpha1.EventMediator) *appsv1.Deployment {
+    ls := labelsForEventMediator(mediator.Name)
+    var replicas int32 = 1
+    env  := []corev1.EnvVar {
+        {
+             Name: MEDIATOR_NAME,
+             Value: mediator.Name,
+        },
+    }
+    ports := generateDeploymentPorts(mediator)
+
+    dep := &appsv1.Deployment{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      mediator.Name,
+            Namespace: mediator.Namespace,
+        },
+        Spec: appsv1.DeploymentSpec{
+            Replicas: &replicas,
+            Selector: &metav1.LabelSelector{
+                MatchLabels: ls,
+            },
+            Template: corev1.PodTemplateSpec{
+                ObjectMeta: metav1.ObjectMeta{
+                    Labels: ls,
+                },
+                Spec: corev1.PodSpec{
+                    Containers: []corev1.Container{{
+                        Image:   "mchengdocker/kabanero-events:0.2",
+                        Name:    "evnetmediator",
+                        Command: []string{"entrypoint"},
+                        Ports: ports,
+                        Env: env,
+                      }},
+                },
+            },
+        },
+    }
+
+    // Set Memcached instance as the owner and controller
+    controllerutil.SetControllerReference(mediator, dep, r.scheme)
+    return dep
+}
+
+func labelsForEventMediator(name string) map[string]string {
+    return map[string]string{"app": name, "eventmediator_cr": name}
 }
