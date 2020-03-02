@@ -8,38 +8,19 @@ spec:
      - from:
          kind: EventMediator
          name: switchboard-mediator
-         id: webhook-switchboard/webhook-switchboard
+         id: webhook-switchboard/githubDest
        to:
-         - kind: ExternalTopic
-           name: nats-topic
-     - from:
-         kind: EventMediator
-         name: switchboard-mediator
-         id: webhook-switchboard/webhook-switchboard/githubDest
-       to:
-        - group: tekton.dev
-          kind: EventListener
-          name: listener1
-        - kind: ExternalListener
-          name: some-other-listener
+        - url: https://service1
+        - url: https://service2
      - from:
          kind: EventMediator
          name:  switchboard-mediator
-         id: webhook-switchboard/webhook-switchboard/dockerDest
+         id: webhook-switchboard/dockerDest
        to:
-        - kind: ExternalListener
-          name: external-listener10
+        - url: https://service3
      - from:
          kind: EventMediator
          name:  switchboard-mediator
-         id: webhook-switchboard/webhook-switchboard/otherDest
+         id: webhook-switchboard/otherDest
        to:
-        - kind: ExternalListener
-          name: external-listener11
-     - from:
-         kind: EventMediator
-         name:  http-listener
-         id: listener1
-       to:
-        - kind: ExternalTopic
-          name: nats-topic
+        - url: https://service4

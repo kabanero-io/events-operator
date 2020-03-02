@@ -1,7 +1,0 @@
-apiVersion: events.kabanero.io/v1alpha1
-kind: EventExternalTopic
-metadata:
-  name: nats-topic
-spec:
-  providerName: nats-provider-1
-  topic: webhook

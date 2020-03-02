@@ -20,8 +20,9 @@ type EventConnectionsSpec struct {
 */
 type EventConnection struct {
     From EventEndpoint `json:"from"`
-    To  [] EventEndpoint  `json:"to"`
+    To  []EventDestinationEndpoint  `json:"to"`
 }
+
 
 type EventEndpoint struct {
     Group string `json:"group,omitempty"`
@@ -31,6 +32,9 @@ type EventEndpoint struct {
     Id    string `json:"id,omitempty"` // Identifier of the endpoint
 }
 
+type EventDestinationEndpoint struct {
+    Url *string `json:"url,omitempty"`
+}
 
 // EventConnectionsStatus defines the observed state of EventConnections
 type EventConnectionsStatus struct {

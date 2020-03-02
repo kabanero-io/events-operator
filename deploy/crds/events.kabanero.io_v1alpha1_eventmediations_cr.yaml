@@ -1,7 +1,0 @@
-apiVersion: events.kabanero.io/v1alpha1
-kind: EventMediations
-metadata:
-  name: example-eventmediations
-spec:
-  # Add fields here
-  size: 3

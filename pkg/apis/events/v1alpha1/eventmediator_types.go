@@ -12,19 +12,52 @@ type EventMediatorSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-    Listeners *[]EventListenerConfig `json:"listeners,omitempty"` // default is no listener
-    ImportMediations  *[]string `json:"importMediations,omitempty"` // default is to import everything unless code is specified
+    Listener *EventListenerConfig `json:"listeners,omitempty"` // default is no listener
+    // ImportMediations  *[]string `json:"importMediations,omitempty"` // default is to import everything unless code is specified
     Mediations *[]MediationsImpl `json:"mediations"`
 }
 
 
 type EventListenerConfig struct {
-    Name string  `json:"name,omitempty"`  // name of the listener configuration. Default is the name of the MediatorSpec
-    Mediations []string `json:"mediations"` // if not specified, applies to all mediations
     HttpPort    int         `json:"httpPort,omitempty"`
     HttpsPort   int         `json:"httpsPort,omitempty"`
     CreateService bool `json:"createService,omitempty"`
     CreateRoute bool      `json:"createRoute,omitempty"`
+}
+
+type MediationsImpl struct {
+    Mediation *EventMediationImpl `json:"mediation"`
+    Function *EventFunctionImpl `json:"function"`
+}
+
+/* Valid combinations are:
+  1) assignment
+  2) if and assignment
+  3) if and body
+  4) switch
+  5) if and switch
+  TBD: switch and default
+*/
+type EventStatement struct {
+    If    *string `json:"if"`
+    Assign  *string `json:"="`
+    Switch  *[]EventStatement `json:"switch,omitempty"`
+    Body *[]EventStatement `json:"body,omitempty"`
+    Default *[]EventStatement `json:"default,omitempty"`
+}
+
+type EventFunctionImpl struct {
+    Name string `json:"name"`
+    Input string `json:"input"`
+    Output string `json:"output"`
+    Body []EventStatement `json:"body"`
+}
+
+type EventMediationImpl  struct {
+    Name string `json:"name"`
+    Input string `json:"input"`
+    SendTo []string `json:"sendTo,omitempty"`
+    Body []EventStatement `json:"body,omitempty"`
 }
 
 // EventMediatorStatus defines the observed state of EventMediator

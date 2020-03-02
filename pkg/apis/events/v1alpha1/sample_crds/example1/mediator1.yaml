@@ -3,4 +3,25 @@ kind: EventMediator
 metadata:
   name: webhook-switchboard
 spec:
-  importMediations: [ "webhook-switchboard" ]
+  listener:
+    httpPort: 9080
+    createrSerivce: true
+    createRoute: true
+  - mediation:
+      name: webhook-switchboard
+      input: message
+      sendTo: [ "githubDest" , "dockerDest", "defaultDest" ]
+      body:
+        - switch:
+            - if: 'has(message.header["X-Github-Event"])'
+              = : 'sendEvent(githubDest, message.body, filterGithubHeader(message.header))'
+            - if : 'has(message.callback_url) && message.callback_url.matches("*docker*") '
+              = : 'sendEvent(dockerDest, message.body, message.header)'
+            - default:
+              = : 'sendEvent(defaultDest, message.body, message.header)'
+  - function:
+      name: filterGithubHeader
+      input: inputHeader
+      output: outputHeader
+      body:
+        = : 'outputHeader = filter(inputHeader, ""key.startsWith(\"X-Github\") || key == \"X-Hub-Signature\" " )'

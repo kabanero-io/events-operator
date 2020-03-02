@@ -1,7 +1,0 @@
-apiVersion: events.kabanero.io/v1alpha1
-kind: EventExternalTopic
-metadata:
-  name: example-eventexternaltopic
-spec:
-  # Add fields here
-  size: 3

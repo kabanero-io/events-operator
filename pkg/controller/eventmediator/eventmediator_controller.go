@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
     "os"
-    "strconv"
+    //"strconv"
 )
 
 const (
@@ -239,7 +239,7 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
 func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1alpha1.EventMediator) bool {
 
     ports := deployment.Spec.Template.Spec.Containers[0].Ports
-    listeners := mediator.Spec.Listeners
+    listener := mediator.Spec.Listener
 
     check := make(map[int32] int32)
     for _, portInfo := range ports {
@@ -247,21 +247,19 @@ func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1a
     }
 
     numMediatorPorts := 0
-    if listeners != nil {
-       for _, listener := range *listeners {
-           if listener.HttpPort != 0 {
-               numMediatorPorts++
-               if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
-                   return true
-               }
+    if listener != nil {
+       if listener.HttpPort != 0 {
+           numMediatorPorts++
+           if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
+               return true
            }
-           if listener.HttpsPort != 0 {
-               numMediatorPorts++
-               if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
-                   return true
-               }
-            }
        }
+       if listener.HttpsPort != 0 {
+           numMediatorPorts++
+           if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
+               return true
+           }
+        }
     }
     if len(ports) != numMediatorPorts {
          return true
@@ -272,23 +270,22 @@ func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1a
 
 func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.ContainerPort {
     var ports []corev1.ContainerPort = make([]corev1.ContainerPort, 0);
-    if mediator.Spec.Listeners != nil {
-        for index, listener := range *mediator.Spec.Listeners {
-            var port int32
-            if listener.HttpPort != 0 {
-                 port = int32(listener.HttpPort)
-                 ports = append(ports, corev1.ContainerPort {
-                        ContainerPort: port,
-                        Name:          "httpPort-"+ strconv.Itoa(index),
-                   } )
-            }
-            if listener.HttpsPort != 0 {
-                 port = int32(listener.HttpsPort)
-                 ports = append(ports, corev1.ContainerPort {
-                        ContainerPort:  port,
-                        Name:          "httpsPort-"+strconv.Itoa(index),
-                   } )
-            }
+    if mediator.Spec.Listener != nil {
+        listener := mediator.Spec.Listener
+        var port int32
+        if listener.HttpPort != 0 {
+             port = int32(listener.HttpPort)
+             ports = append(ports, corev1.ContainerPort {
+                    ContainerPort: port,
+                    Name:          "httpPort",
+               } )
+        }
+        if listener.HttpsPort != 0 {
+             port = int32(listener.HttpsPort)
+             ports = append(ports, corev1.ContainerPort {
+                    ContainerPort:  port,
+                    Name:          "httpsPort",
+               } )
         }
     }
     return ports
@@ -344,21 +341,20 @@ func labelsForEventMediator(name string) map[string]string {
 
 func generateServicePorts(mediator *eventsv1alpha1.EventMediator) []corev1.ServicePort {
     ports := make([]corev1.ServicePort, 0)
-    if mediator.Spec.Listeners != nil {
-        for _, listener := range *mediator.Spec.Listeners {
-            var port int32
-            if listener.HttpPort != 0 {
-                 port = int32(listener.HttpPort)
-                 ports = append(ports, corev1.ServicePort {
-                        Port: port,
-                   } )
-            }
-            if listener.HttpsPort != 0 {
-                 port = int32(listener.HttpsPort)
-                 ports = append(ports, corev1.ServicePort {
-                        Port:  port,
-                   } )
-            }
+    if mediator.Spec.Listener != nil {
+        listener := mediator.Spec.Listener 
+        var port int32
+        if listener.HttpPort != 0 {
+             port = int32(listener.HttpPort)
+             ports = append(ports, corev1.ServicePort {
+                    Port: port,
+               } )
+        }
+        if listener.HttpsPort != 0 {
+             port = int32(listener.HttpsPort)
+             ports = append(ports, corev1.ServicePort {
+                    Port:  port,
+               } )
         }
     }
     return ports
@@ -390,7 +386,7 @@ func (r *ReconcileEventMediator) serviceForEventMediator(mediator *eventsv1alpha
 func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.EventMediator) bool {
 
     ports := service.Spec.Ports
-    listeners := mediator.Spec.Listeners
+    listener := mediator.Spec.Listener
 
     check := make(map[int32] int32)
     for _, portInfo := range ports {
@@ -398,21 +394,19 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
     }
 
     numMediatorPorts := 0
-    if listeners != nil {
-       for _, listener := range *listeners {
-           if listener.HttpPort != 0 {
-               numMediatorPorts++
-               if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
-                   return true
-               }
+    if listener != nil {
+       if listener.HttpPort != 0 {
+           numMediatorPorts++
+           if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
+               return true
            }
-           if listener.HttpsPort != 0 {
-               numMediatorPorts++
-               if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
-                   return true
-               }
-            }
        }
+       if listener.HttpsPort != 0 {
+           numMediatorPorts++
+           if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
+               return true
+           }
+        }
     }
     if len(ports) != numMediatorPorts {
          return true
