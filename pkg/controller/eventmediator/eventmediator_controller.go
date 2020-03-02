@@ -3,6 +3,7 @@ package eventmediator
 import (
 	"context"
 
+    // routev1 "github.com/openshift/api/route/v1"
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
     appsv1 "k8s.io/api/apps/v1"
@@ -14,7 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+    logf "sigs.k8s.io/controller-runtime/pkg/log"
+    "github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -23,13 +25,13 @@ import (
 )
 
 const (
-    MEDIATOR_NAME = "MEDIATOR_NAME" // environment variable 
+    MEDIATOR_NAME = "MEDIATOR_NAME" // environment variable. If not set, we're running as operator.
 )
 
-/* This controller can serve as either an operator, or a controller.
-  As an operator, for manages Deployments for each EventMEdiator crd instance
- As a controller, the environment variable MEDIATOR_NAME is set to the name of the mediator, and it is responsible for
- updates one EventMediator CRD instance.
+/* This controller can serve as either an operator, or a regular controller.
+  As an operator, it manages Deployments for each EventMEdiator crd instance
+  As a controller, the environment variable MEDIATOR_NAME is set to the name of the mediator, and it is responsible for
+ updates on the EventMediator CRD instance.
 */
 var MediatorName string
 var isOperator bool = false
@@ -82,6 +84,16 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	    if err != nil {
 		    return err
         }
+
+        err = c.Watch(
+        &source.Kind{Type: &corev1.Service{}},
+        &handler.EnqueueRequestForOwner{
+            IsController: true,
+            OwnerType:    &eventsv1alpha1.EventMediator{}},
+        )
+	    if err != nil {
+		    return err
+        }
     } 
 
 	return nil
@@ -125,38 +137,13 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 	}
 
     if isOperator {
-        /* Operator that manages Deployments for mediators.  */
-
-        /* Check if the deployment already exists, if not create a new one */
-        deployment := &appsv1.Deployment{}
-        err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
-        if err != nil && errors.IsNotFound(err) {
-            // Define a new deployment
-            dep := r.deploymentForEventMediator(instance)
-            reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
-            err = r.client.Create(context.TODO(), dep)
-            if err != nil {
-                reqLogger.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
-                return reconcile.Result{}, err
-            }
-            // Deployment created successfully - return and requeue
-            return reconcile.Result{Requeue: true}, nil
-        } else if err != nil {
-            reqLogger.Error(err, "Failed to get Deployment")
-            return reconcile.Result{}, err
+        result, err := r.reconcileDeployment(request, instance, reqLogger)
+        if err != nil  || result.Requeue{
+            return result, err
         }
 
-
-        if portChanged(deployment, instance)  {
-            deployment.Spec.Template.Spec.Containers[0].Ports = generateDeploymentPorts(instance)
-            err = r.client.Update(context.TODO(), deployment)
-            if err != nil {
-               reqLogger.Error(err, "Failed to update Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
-                return reconcile.Result{}, err
-             }
-            // Spec updated - return and requeue
-            return reconcile.Result{Requeue: true}, nil
-        }
+        result, err = r.reconcileService(request, instance, reqLogger)
+        return result, err
     } else {
         /* plain controller for one mediator */
         if instance.ObjectMeta.Name ==  MEDIATOR_NAME {
@@ -167,8 +154,89 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 	return reconcile.Result{}, nil
 }
 
+/* Reconcile deployment for an operator */
+func (r *ReconcileEventMediator) reconcileOperator(request reconcile.Request, mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
+    result, err := r.reconcileDeployment(request, mediator, reqLogger)
+    if err != nil {
+        return result, err
+    }
+    result, err = r.reconcileService(request, mediator, reqLogger)
+    if err != nil {
+        return result, err
+    }
+	return reconcile.Result{}, nil
+}
+
+/* reconcile Operator */
+func (r *ReconcileEventMediator) reconcileDeployment(request reconcile.Request, instance *eventsv1alpha1.EventMediator,  reqLogger logr.Logger) (reconcile.Result, error) {
+    /* Check if the deployment already exists, if not create a new one */
+    deployment := &appsv1.Deployment{}
+    err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
+    if err != nil && errors.IsNotFound(err) {
+        // Define a new deployment
+        dep := r.deploymentForEventMediator(instance)
+        reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+        err = r.client.Create(context.TODO(), dep)
+        if err != nil {
+            reqLogger.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+            return reconcile.Result{}, err
+        }
+        // Deployment created successfully - return and requeue
+        return reconcile.Result{Requeue: true}, nil
+    } else if err != nil {
+        reqLogger.Error(err, "Failed to get Deployment")
+        return reconcile.Result{}, err
+    }
+
+    if portChangedForDeployment(deployment, instance)  {
+        deployment.Spec.Template.Spec.Containers[0].Ports = generateDeploymentPorts(instance)
+        err = r.client.Update(context.TODO(), deployment)
+        if err != nil {
+           reqLogger.Error(err, "Failed to update Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
+            return reconcile.Result{}, err
+         }
+        // Spec updated - return and requeue
+        return reconcile.Result{Requeue: true}, nil
+    }
+
+    return reconcile.Result{}, nil
+}
+
+/* reconcile Operator */
+func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, instance *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
+    service := &corev1.Service{}
+    err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, service)
+    if err != nil && errors.IsNotFound(err) {
+        // Define a new service
+        serv := r.serviceForEventMediator(instance)
+        reqLogger.Info("Creating a new Service", "Service.Namespace", serv.Namespace, "Service.Name", serv.Name)
+        err = r.client.Create(context.TODO(), service)
+        if err != nil {
+            reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", serv.Namespace, "Service.Name", serv.Name)
+            return reconcile.Result{}, err
+        }
+        // Servicecreated successfully - return and requeue
+        return reconcile.Result{Requeue: true}, nil
+    } else if err != nil {
+        reqLogger.Error(err, "Failed to get Service")
+        return reconcile.Result{}, err
+    }
+
+    if portChangedForService(service, instance)  {
+        service.Spec.Ports = generateServicePorts(instance)
+        err = r.client.Update(context.TODO(), service)
+        if err != nil {
+           reqLogger.Error(err, "Failed to update Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
+            return reconcile.Result{}, err
+         }
+        // Spec updated - return and requeue
+        return reconcile.Result{Requeue: true}, nil
+    }
+    return reconcile.Result{}, nil
+}
+
 /* Return true if the ports in a Deployment have changed */
-func portChanged(deployment *appsv1.Deployment, mediator *eventsv1alpha1.EventMediator) bool {
+func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1alpha1.EventMediator) bool {
 
     ports := deployment.Spec.Template.Spec.Containers[0].Ports
     listeners := mediator.Spec.Listeners
@@ -226,7 +294,7 @@ func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.Co
     return ports
 }
 
-// deploymentForMemcached returns a memcached Deployment object
+// Return a deployment object
 func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1alpha1.EventMediator) *appsv1.Deployment {
     ls := labelsForEventMediator(mediator.Name)
     var replicas int32 = 1
@@ -265,11 +333,89 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
         },
     }
 
-    // Set Memcached instance as the owner and controller
+    // Set owner and controller
     controllerutil.SetControllerReference(mediator, dep, r.scheme)
     return dep
 }
 
 func labelsForEventMediator(name string) map[string]string {
     return map[string]string{"app": name, "eventmediator_cr": name}
+}
+
+func generateServicePorts(mediator *eventsv1alpha1.EventMediator) []corev1.ServicePort {
+    ports := make([]corev1.ServicePort, 0)
+    if mediator.Spec.Listeners != nil {
+        for _, listener := range *mediator.Spec.Listeners {
+            var port int32
+            if listener.HttpPort != 0 {
+                 port = int32(listener.HttpPort)
+                 ports = append(ports, corev1.ServicePort {
+                        Port: port,
+                   } )
+            }
+            if listener.HttpsPort != 0 {
+                 port = int32(listener.HttpsPort)
+                 ports = append(ports, corev1.ServicePort {
+                        Port:  port,
+                   } )
+            }
+        }
+    }
+    return ports
+}
+
+// Return a Service object
+func (r *ReconcileEventMediator) serviceForEventMediator(mediator *eventsv1alpha1.EventMediator) *corev1.Service {
+    ls := labelsForEventMediator(mediator.Name)
+    servicePorts := generateServicePorts(mediator)
+
+    service := &corev1.Service{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      mediator.Name,
+            Namespace: mediator.Namespace,
+        },
+        Spec: corev1.ServiceSpec {
+            Ports: servicePorts,
+            Selector: ls,
+            Type: corev1. ServiceTypeClusterIP,
+        },
+    }
+
+    // Set owner and controller
+    controllerutil.SetControllerReference(mediator, service, r.scheme)
+    return service
+}
+
+/* Return true if the ports in a Service have changed */
+func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.EventMediator) bool {
+
+    ports := service.Spec.Ports
+    listeners := mediator.Spec.Listeners
+
+    check := make(map[int32] int32)
+    for _, portInfo := range ports {
+        check[portInfo.Port] = portInfo.Port
+    }
+
+    numMediatorPorts := 0
+    if listeners != nil {
+       for _, listener := range *listeners {
+           if listener.HttpPort != 0 {
+               numMediatorPorts++
+               if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
+                   return true
+               }
+           }
+           if listener.HttpsPort != 0 {
+               numMediatorPorts++
+               if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
+                   return true
+               }
+            }
+       }
+    }
+    if len(ports) != numMediatorPorts {
+         return true
+    }
+    return false
 }

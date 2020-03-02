@@ -3,6 +3,7 @@ module github.com/kabanero-io/events-operator
 go 1.13
 
 require (
+	github.com/go-logr/logr v0.1.0
 	github.com/google/cel-go v0.3.2
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/kabanero-io/kabanero-operator v0.0.0-20200227142632-72b6033d63d7
