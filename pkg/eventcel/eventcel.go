@@ -21,8 +21,8 @@ import (
 	"encoding/json"
 	"fmt"
     eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
-    "github.com/kabanero-io/events-operator/pkg/controller/eventmediator"
-	"github.com/kabanero-io/events-operator/pkg/endpoints"
+    "github.com/kabanero-io/events-operator/pkg/managers"
+// "github.com/kabanero-io/events-operator/pkg/endpoints"
 //	"github.com/kabanero-io/events-operator/pkg/messages"
 	"github.com/kabanero-io/events-operator/pkg/utils"
 //	"gopkg.in/yaml.v2"
@@ -41,12 +41,12 @@ import (
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/interpreter/functions"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
+	// "k8s.io/apimachinery/pkg/runtime/schema"
+	// k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/dynamic"
+	// "k8s.io/client-go/dynamic"
 	"k8s.io/klog"
 )
 
@@ -234,18 +234,18 @@ type EventTriggerDefinition struct {
 
 // Processor contains the event trigger definition and the file it was loaded from
 type Processor struct {
-    eventManager *eventmediator.EventManager
-	 env              *endpoints.Environment
+    eventManager *managers.EventManager
+	 // env              *endpoints.Environment
 	// triggerDir       string // directory where trigger file is stored
 	additionalFuncDecls cel.EnvOption
 	additionalFuncs     cel.ProgramOption
 }
 
 // NewProcessor creates a new trigger processor.
-func NewProcessor( env *endpoints.Environment, mgr *eventmediator.EventManager) *Processor {
+func NewProcessor( /*env *endpoints.Environment,*/ mgr *managers.EventManager) *Processor {
 	p := &Processor{
         eventManager : mgr,
-		env: env,
+		/*env: env,*/
 	}
 	p.initCELFuncs()
     return p
@@ -1179,65 +1179,65 @@ func SubstituteTemplate(templateStr string, variables interface{}) (string, erro
 }
 
 /* Create resource. Assume it does not already exist */
-func (p *Processor) createResource(resourceStr string) error {
-	if klog.V(4) {
-		klog.Infof("Creating resource %s", resourceStr)
-	}
-
-	/* Convert yaml to unstructured*/
-	resourceBytes, err := k8syaml.ToJSON([]byte(resourceStr))
-	if err != nil {
-		return fmt.Errorf("unable to convert yaml resource to JSON: %v", resourceStr)
-	}
-	var unstructuredObj = &unstructured.Unstructured{}
-	err = unstructuredObj.UnmarshalJSON(resourceBytes)
-	if err != nil {
-		klog.Errorf("Unable to convert JSON %s to unstructured", resourceStr)
-		return err
-	}
-
-	group, version, resource, namespace, name, err := getGroupVersionResourceNamespaceName(unstructuredObj)
-	if namespace == "" {
-		return fmt.Errorf("resource %s does not contain namepsace", resourceStr)
-	}
-
-	/* add label kabanero.io/jobld = <jobid> */
-	/*
-		err = setJobID(unstructuredObj, jobid)
-		if err != nil {
-			return err
-		}
-	*/
-
-	if klog.V(5) {
-		klog.Infof("Resources before creating : %v", unstructuredObj)
-	}
-
-	gvr := schema.GroupVersionResource{
-		Group:    group,
-		Version:  version,
-		Resource: resource,
-	}
-
-	if err == nil {
-		var intfNoNS = p.env.DynamicClient.Resource(gvr)
-		var intf dynamic.ResourceInterface
-		intf = intfNoNS.Namespace(namespace)
-
-		_, err = intf.Create(unstructuredObj, metav1.CreateOptions{})
-		if err != nil {
-			klog.Errorf("Unable to create resource %s/%s error: %s", namespace, name, err)
-			return err
-		}
-	} else {
-		klog.Errorf("Unable to create resource /%s.  Error: %s", resourceStr, err)
-		return fmt.Errorf("unable to get GVR for resource %s, error: %s", resourceStr, err)
-	}
-	if klog.V(2) {
-		klog.Infof("Created resource %s/%s", namespace, name)
-	}
-	return nil
-}
+//func (p *Processor) createResource(resourceStr string) error {
+//	if klog.V(4) {
+//		klog.Infof("Creating resource %s", resourceStr)
+//	}
+//
+//	/* Convert yaml to unstructured*/
+//	resourceBytes, err := k8syaml.ToJSON([]byte(resourceStr))
+//	if err != nil {
+//		return fmt.Errorf("unable to convert yaml resource to JSON: %v", resourceStr)
+//	}
+//	var unstructuredObj = &unstructured.Unstructured{}
+//	err = unstructuredObj.UnmarshalJSON(resourceBytes)
+//	if err != nil {
+//		klog.Errorf("Unable to convert JSON %s to unstructured", resourceStr)
+//		return err
+//	}
+//
+//	group, version, resource, namespace, name, err := getGroupVersionResourceNamespaceName(unstructuredObj)
+//	if namespace == "" {
+//		return fmt.Errorf("resource %s does not contain namepsace", resourceStr)
+//	}
+//
+//	/* add label kabanero.io/jobld = <jobid> */
+//	/*
+//		err = setJobID(unstructuredObj, jobid)
+//		if err != nil {
+//			return err
+//		}
+//	*/
+//
+//	if klog.V(5) {
+//		klog.Infof("Resources before creating : %v", unstructuredObj)
+//	}
+//
+//	gvr := schema.GroupVersionResource{
+//		Group:    group,
+//		Version:  version,
+//		Resource: resource,
+//	}
+//
+//	if err == nil {
+//		var intfNoNS = p.env.DynamicClient.Resource(gvr)
+//		var intf dynamic.ResourceInterface
+//		intf = intfNoNS.Namespace(namespace)
+//
+//		_, err = intf.Create(unstructuredObj, metav1.CreateOptions{})
+//		if err != nil {
+//			klog.Errorf("Unable to create resource %s/%s error: %s", namespace, name, err)
+//			return err
+//		}
+//	} else {
+//		klog.Errorf("Unable to create resource /%s.  Error: %s", resourceStr, err)
+//		return fmt.Errorf("unable to get GVR for resource %s, error: %s", resourceStr, err)
+//	}
+//	if klog.V(2) {
+//		klog.Infof("Created resource %s/%s", namespace, name)
+//	}
+//	return nil
+//}
 
 func setJobID(unstructuredObj *unstructured.Unstructured, jobid string) error {
 	var objMap = unstructuredObj.Object
@@ -1459,61 +1459,61 @@ func (p *Processor) kabaneroConfigCEL(values ...ref.Val) ref.Val {
        map["exists"] is true if the file exists, or false if it doesn't exist
 	   map["content"], if set, is the actual file content, of type map[string]interface{}
 */
-func (p *Processor) downloadYAMLCEL(webhookMessage ref.Val, fileNameVal ref.Val) ref.Val {
-	klog.Infof("downloadYAMLCEL first param: %v, second param: %v", webhookMessage, fileNameVal)
-
-	if webhookMessage.Value() == nil {
-		return types.ValOrErr(webhookMessage, "unexpected null first parameter passed to function downloadYAML.")
-	}
-	mapInst, ok := webhookMessage.Value().(map[string]interface{})
-	if !ok {
-		return types.ValOrErr(webhookMessage, "unexpected type '%v' passed as first parameter to function downloadYAML. It should be map[string]interface{}", webhookMessage.Type())
-	}
-
-	bodyMapObj, ok := mapInst[BODY]
-	if !ok {
-		return types.ValOrErr(webhookMessage, "Missing event parameter %v passed to downloadYAML.", webhookMessage)
-	}
-	var bodyMap map[string]interface{}
-	bodyMap, ok = bodyMapObj.(map[string]interface{})
-	if !ok {
-		return types.ValOrErr(webhookMessage, "Event parameter %v passed to downloadYAML not map[string]interface{}. Instead, it is %T.", webhookMessage, bodyMapObj)
-	}
-
-	headerMapObj, ok := mapInst[HEADER]
-	if !ok {
-		return types.ValOrErr(webhookMessage, "Missing header parameter %v passed to downloadYAML.", webhookMessage)
-	}
-	var headerMap map[string][]string
-	headerMap, err := convertToHeaderMap(headerMapObj)
-	if err != nil {
-		return types.ValOrErr(webhookMessage, "Header %v passed to downloadYAML can not be converted to map[string][]string. Instead, it is %T. Conversion error: %v", headerMapObj, headerMapObj, err)
-	}
-
-	if fileNameVal.Value() == nil {
-		return types.ValOrErr(fileNameVal, "unexpected null second parameter passed to function downloadYAML.")
-	}
-	fileName, ok := fileNameVal.Value().(string)
-	if !ok {
-		return types.ValOrErr(fileNameVal, "unexpected type '%v' passed as first parameter to function downloadYAML. It should be string", fileNameVal.Type())
-	}
-
-	var ret = make(map[string]interface{})
-	fileContent, exists, err := utils.DownloadYAML(p.env.KubeClient, headerMap, bodyMap, fileName)
-	ret["exists"] = exists
-	if err != nil {
-		ret["error"] = fmt.Sprintf("%v", err)
-		if klog.V(5) {
-			klog.Infof("downloadYAMLCEL error: %v", err)
-		}
-	} else {
-		ret["content"] = fileContent
-		if klog.V(5) {
-			klog.Infof("downloadYAMLCEL content: %v", fileContent)
-		}
-	}
-	return types.NewDynamicMap(types.DefaultTypeAdapter, ret)
-}
+// func (p *Processor) downloadYAMLCEL(webhookMessage ref.Val, fileNameVal ref.Val) ref.Val {
+// 	klog.Infof("downloadYAMLCEL first param: %v, second param: %v", webhookMessage, fileNameVal)
+// 
+// 	if webhookMessage.Value() == nil {
+// 		return types.ValOrErr(webhookMessage, "unexpected null first parameter passed to function downloadYAML.")
+// 	}
+// 	mapInst, ok := webhookMessage.Value().(map[string]interface{})
+// 	if !ok {
+// 		return types.ValOrErr(webhookMessage, "unexpected type '%v' passed as first parameter to function downloadYAML. It should be map[string]interface{}", webhookMessage.Type())
+// 	}
+// 
+// 	bodyMapObj, ok := mapInst[BODY]
+// 	if !ok {
+// 		return types.ValOrErr(webhookMessage, "Missing event parameter %v passed to downloadYAML.", webhookMessage)
+// 	}
+// 	var bodyMap map[string]interface{}
+// 	bodyMap, ok = bodyMapObj.(map[string]interface{})
+// 	if !ok {
+// 		return types.ValOrErr(webhookMessage, "Event parameter %v passed to downloadYAML not map[string]interface{}. Instead, it is %T.", webhookMessage, bodyMapObj)
+// 	}
+// 
+// 	headerMapObj, ok := mapInst[HEADER]
+// 	if !ok {
+// 		return types.ValOrErr(webhookMessage, "Missing header parameter %v passed to downloadYAML.", webhookMessage)
+// 	}
+// 	var headerMap map[string][]string
+// 	headerMap, err := convertToHeaderMap(headerMapObj)
+// 	if err != nil {
+// 		return types.ValOrErr(webhookMessage, "Header %v passed to downloadYAML can not be converted to map[string][]string. Instead, it is %T. Conversion error: %v", headerMapObj, headerMapObj, err)
+// 	}
+// 
+// 	if fileNameVal.Value() == nil {
+// 		return types.ValOrErr(fileNameVal, "unexpected null second parameter passed to function downloadYAML.")
+// 	}
+// 	fileName, ok := fileNameVal.Value().(string)
+// 	if !ok {
+// 		return types.ValOrErr(fileNameVal, "unexpected type '%v' passed as first parameter to function downloadYAML. It should be string", fileNameVal.Type())
+// 	}
+// 
+// 	var ret = make(map[string]interface{})
+// 	fileContent, exists, err := utils.DownloadYAML(p.env.KubeClient, headerMap, bodyMap, fileName)
+// 	ret["exists"] = exists
+// 	if err != nil {
+// 		ret["error"] = fmt.Sprintf("%v", err)
+// 		if klog.V(5) {
+// 			klog.Infof("downloadYAMLCEL error: %v", err)
+// 		}
+// 	} else {
+// 		ret["content"] = fileContent
+// 		if klog.V(5) {
+// 			klog.Infof("downloadYAMLCEL content: %v", fileContent)
+// 		}
+// 	}
+// 	return types.NewDynamicMap(types.DefaultTypeAdapter, ret)
+// }
 
 /* implementation of call for CEL.
    function string: name of function to call
@@ -2043,8 +2043,8 @@ func (p *Processor) initCELFuncs() {
 			decls.NewOverload("kabaneroConfig", []*exprpb.Type{}, decls.NewMapType(decls.String, decls.Any))),
 		decls.NewFunction("jobID",
 			decls.NewOverload("jobID", []*exprpb.Type{}, decls.String)),
-		decls.NewFunction("downloadYAML",
-			decls.NewOverload("downloadYAML_map_string", []*exprpb.Type{decls.NewMapType(decls.String, decls.Any), decls.String}, decls.NewMapType(decls.String, decls.Any))),
+		/*decls.NewFunction("downloadYAML",
+			decls.NewOverload("downloadYAML_map_string", []*exprpb.Type{decls.NewMapType(decls.String, decls.Any), decls.String}, decls.NewMapType(decls.String, decls.Any))), */
 		decls.NewFunction("toDomainName",
 			decls.NewOverload("toDomainName_string", []*exprpb.Type{decls.String}, decls.String)),
 		decls.NewFunction("toLabel",
@@ -2075,9 +2075,9 @@ func (p *Processor) initCELFuncs() {
 		&functions.Overload{
 			Operator: "jobID",
 			Function: p.jobIDCEL},
-		&functions.Overload{
+		/*&functions.Overload{
 			Operator: "downloadYAML",
-			Binary:   p.downloadYAMLCEL},
+			Binary:   p.downloadYAMLCEL}, */
 		&functions.Overload{
 			Operator: "toDomainName",
 			Unary:    p.toDomainNameCEL},
