@@ -19,7 +19,6 @@ type EventMediatorSpec struct {
 
 
 type EventListenerConfig struct {
-    HttpPort    int         `json:"httpPort,omitempty"`
     HttpsPort   int         `json:"httpsPort,omitempty"`
     CreateService bool `json:"createService,omitempty"`
     CreateRoute bool      `json:"createRoute,omitempty"`

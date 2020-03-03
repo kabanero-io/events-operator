@@ -4,7 +4,7 @@ metadata:
   name: webhook-switchboard
 spec:
   listener:
-    httpPort: 9080
+    httpsPort: 9443
     createrSerivce: true
     createRoute: true
   - mediation:
@@ -13,7 +13,7 @@ spec:
       sendTo: [ "githubDest" , "dockerDest", "defaultDest" ]
       body:
         - switch:
-            - if: 'has(message.header["X-Github-Event"])'
+            - if: 'has(message.header) && has(message.header["X-Github-Event"])'
               = : 'sendEvent(githubDest, message.body, filterGithubHeader(message.header))'
             - if : 'has(message.callback_url) && message.callback_url.matches("*docker*") '
               = : 'sendEvent(dockerDest, message.body, message.header)'

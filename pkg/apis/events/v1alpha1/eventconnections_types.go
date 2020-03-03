@@ -27,7 +27,6 @@ type EventConnection struct {
 type EventEndpoint struct {
     Group string `json:"group,omitempty"`
     Kind  string `json:"kind"`
-    Namespace string `json:"namespace,omitempty"`
     Name  string `json:"name"`
     Id    string `json:"id,omitempty"` // Identifier of the endpoint
 }

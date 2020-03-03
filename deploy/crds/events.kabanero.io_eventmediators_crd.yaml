@@ -41,8 +41,6 @@ spec:
                   type: boolean
                 createService:
                   type: boolean
-                httpPort:
-                  type: integer
                 httpsPort:
                   type: integer
               type: object

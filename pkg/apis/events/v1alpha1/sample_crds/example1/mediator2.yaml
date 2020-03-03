@@ -4,7 +4,7 @@ metadata:
   name: https-listener
 spec:
   listeners:
-    - httpsPort: 9080
+    - httpsPort: 9443
       createService: true
       createRoute: true
   mediations:

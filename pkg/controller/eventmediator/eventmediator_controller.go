@@ -248,12 +248,6 @@ func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1a
 
     numMediatorPorts := 0
     if listener != nil {
-       if listener.HttpPort != 0 {
-           numMediatorPorts++
-           if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
-               return true
-           }
-       }
        if listener.HttpsPort != 0 {
            numMediatorPorts++
            if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
@@ -273,13 +267,6 @@ func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.Co
     if mediator.Spec.Listener != nil {
         listener := mediator.Spec.Listener
         var port int32
-        if listener.HttpPort != 0 {
-             port = int32(listener.HttpPort)
-             ports = append(ports, corev1.ContainerPort {
-                    ContainerPort: port,
-                    Name:          "httpPort",
-               } )
-        }
         if listener.HttpsPort != 0 {
              port = int32(listener.HttpsPort)
              ports = append(ports, corev1.ContainerPort {
@@ -344,12 +331,6 @@ func generateServicePorts(mediator *eventsv1alpha1.EventMediator) []corev1.Servi
     if mediator.Spec.Listener != nil {
         listener := mediator.Spec.Listener 
         var port int32
-        if listener.HttpPort != 0 {
-             port = int32(listener.HttpPort)
-             ports = append(ports, corev1.ServicePort {
-                    Port: port,
-               } )
-        }
         if listener.HttpsPort != 0 {
              port = int32(listener.HttpsPort)
              ports = append(ports, corev1.ServicePort {
@@ -395,12 +376,6 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
 
     numMediatorPorts := 0
     if listener != nil {
-       if listener.HttpPort != 0 {
-           numMediatorPorts++
-           if   _, exists:= check[int32(listener.HttpPort)]; ! exists {
-               return true
-           }
-       }
        if listener.HttpsPort != 0 {
            numMediatorPorts++
            if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {

@@ -7,7 +7,7 @@ import (
 
 type ConnectionsManager struct {
     connections map[string]*eventsv1alpha1.EventConnections // list of connections
-    mutex sync.Mutex 
+    mutex sync.Mutex
 }
 
 func getKey( connections *eventsv1alpha1.EventConnections) string {
@@ -33,7 +33,7 @@ func (connectionsMgr *ConnectionsManager) RemoveConnections(connections *eventsv
 }
 
 /* Lookup destination endpoints for an actual endpoint */
-func (connectionsMgr *ConnectionsManager) LookupDestinationEndpoints(endpoint *eventsv1alpha1.EventEndpoint ) []eventsv1alpha1.EventDestinationEndpoint {
+func (connectionsMgr *ConnectionsManager) LookupDestinationEndpoints(endpoint *eventsv1alpha1.EventEndpoint) []eventsv1alpha1.EventDestinationEndpoint {
     connectionsMgr.mutex.Lock()
     defer connectionsMgr.mutex.Unlock()
 
@@ -67,11 +67,6 @@ func eventEndpointMatch(actual *eventsv1alpha1.EventEndpoint, resource *eventsv1
          return false
     }
 
-    if actual.Namespace != resource.Namespace {
-        if resource.Namespace != "" {
-             return false
-        }
-    }
 
     if actual.Name != resource.Name {
           return false
