@@ -57,6 +57,8 @@ spec:
                   to:
                     items:
                       properties:
+                        insecure:
+                          type: boolean
                         url:
                           type: string
                       type: object

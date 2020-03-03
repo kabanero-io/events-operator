@@ -33,6 +33,7 @@ type EventEndpoint struct {
 
 type EventDestinationEndpoint struct {
     Url *string `json:"url,omitempty"`
+    Insecure bool `json:"insecure,omitempty"`
 }
 
 // EventConnectionsStatus defines the observed state of EventConnections
