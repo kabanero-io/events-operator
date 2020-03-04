@@ -10,6 +10,7 @@ go_import_path: github.com/kabanero-io/events-operator
 cache:
   directories:
   - $HOME/.cache/go-build
+  - $HOME/gopath/pkg/mod
 
 stages:
 - build
