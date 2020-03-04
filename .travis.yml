@@ -1,0 +1,61 @@
+os: linux
+language: go
+
+
+go:
+- 1.13
+
+go_import_path: github.com/kabanero-io/events-operator
+
+cache:
+  directories:
+  - $HOME/.cache/go-build
+
+stages:
+- build
+- test
+- deploy
+
+x_base_steps:
+- &test
+  stage: test
+  before_install:
+  - travis_retry make tidy
+  install:
+  - make install
+  after_success:
+  - echo "Build succeeded and unit/integration testing passed."
+  after_failure:
+  - echo "Build failed or unit/integration testing failed."
+
+jobs:
+  include:
+  - name: Build docker image
+    stage: build
+    before_script:
+    - make vet
+    script:
+    - make build-image
+    after_success:
+    - echo "Image build succeeded and tagged."
+    after_failure:
+    - echo "Image build failed."
+  - <<: *test
+    name: Run unit tests
+    script:
+    - make unit-tests
+  - <<: *test
+    name: Run e2e tests
+    script:
+    - make e2e-tests
+  - name: Push image
+    stage: deploy
+    if: branch = master AND fork = false AND type != pull_request AND env(DOCKER_USERNAME) IS NOT blank AND env(DOCKER_TOKEN) IS NOT blank
+    script:
+    - make build-image
+    - docker login -u ${DOCKER_USERNAME} -p ${DOCKER_TOKEN}
+    - make push-image
+    after_success:
+    - echo "Image push to repository was successful."
+    after_failure:
+    - echo "Image push to repository failed."
