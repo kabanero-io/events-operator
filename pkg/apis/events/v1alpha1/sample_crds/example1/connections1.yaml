@@ -11,7 +11,9 @@ spec:
          id: webhook-switchboard/githubDest
        to:
         - url: https://service1
+          insecure: true
         - url: https://service2
+          insecure: true
      - from:
          kind: EventMediator
          name:  switchboard-mediator

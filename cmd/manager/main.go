@@ -29,6 +29,11 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+
+   "github.com/kabanero-io/events-operator/pkg/managers"
+   "github.com/kabanero-io/events-operator/pkg/eventenv"
+   "github.com/kabanero-io/events-operator/pkg/connections"
+   "github.com/kabanero-io/events-operator/pkg/listeners"
 )
 
 // Change below variables to serve metrics on different host or port.
@@ -118,6 +123,15 @@ func main() {
 	addMetrics(ctx, cfg, namespace)
 
 	log.Info("Starting the Cmd.")
+
+    /* Init events execution environment */
+    env := &eventenv.EventEnv {
+        Client: mgr.GetClient(),
+        EventMgr: &managers.EventManager{},
+        ConnectionsMgr: &connections.ConnectionsManager{},
+        ListenerMgr: &listeners.ListenerManagerDefault{},
+    } 
+    eventenv.InitEventEnv(env)
 
 	// Start the Cmd
 	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {

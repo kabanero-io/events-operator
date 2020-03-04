@@ -5,6 +5,7 @@ import (
 
     // routev1 "github.com/openshift/api/route/v1"
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+	"github.com/kabanero-io/events-operator/pkg/eventenv"
 	corev1 "k8s.io/api/core/v1"
     appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -148,6 +149,14 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
         /* plain controller for one mediator */
         if instance.ObjectMeta.Name ==  MEDIATOR_NAME {
             /* TODO: We should handle this */
+            env := eventenv.GetEventEnv()
+            env.EventMgr.AddEventMediator(instance)
+            /*
+            err = env.ListenerMgr.NewListener(env, port, key, processMessage)
+            if err != nil {
+                 return reconcile.Result{}, err
+            }
+            */
         }
     }
 
@@ -387,4 +396,9 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
          return true
     }
     return false
+}
+
+
+func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string) error {
+    return nil
 }

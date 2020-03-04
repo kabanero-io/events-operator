@@ -4,6 +4,7 @@ import (
 	"context"
 
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+	"github.com/kabanero-io/events-operator/pkg/eventenv"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -99,6 +100,8 @@ func (r *ReconcileEventConnections) Reconcile(request reconcile.Request) (reconc
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
+
+    eventenv.GetEventEnv().ConnectionsMgr.AddConnections(instance)
 
 	return reconcile.Result{}, nil
 }

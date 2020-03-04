@@ -159,7 +159,7 @@ func (mediatorMgr *MediatorManager) initialize() {
 type EventManager struct {
     mediatorMgrs map[string] *MediatorManager
     // mediations map[string]*eventsv1alpha1.EventMediations // cache of EventMediations objects
-    functions map[string]*eventsv1alpha1.EventFunctionImpl
+    // functions map[string]*eventsv1alpha1.EventFunctionImpl
 /*
     MediationExecutors *MediationExecutors // mediation executors
     FunctionLibrary *FunctionLibrary // library of functions
@@ -168,31 +168,20 @@ type EventManager struct {
 }
 
 
-func (mgr *EventManager) GetFunction(name string) (*eventsv1alpha1.EventFunctionImpl, bool) {
+// func (mgr *EventManager) GetFunction(name string) (*eventsv1alpha1.EventFunctionImpl, bool) {
+//    mgr.mutex.Lock()
+//    defer mgr.mutex.Unlock()
+//    obj, ok := mgr.functions[name]
+//    return obj, ok
+//}
+
+func (mgr *EventManager) AddEventMediator(mediator *eventsv1alpha1.EventMediator) {
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()
-    obj, ok := mgr.functions[name]
-    return obj, ok
-}
-
-func (mgr *EventManager) addEventMediator(mediator *eventsv1alpha1.EventMediator) {
-    mgr.mutex.Lock()
-    defer mgr.mutex.Unlock()
-
-    /* add the functions */
-    if mediator.Spec.Mediations != nil {
-        for _, mediatorImpl := range *mediator.Spec.Mediations {
-            if mediatorImpl.Function != nil {
-                mgr.functions[mediatorImpl.Function.Name] =  mediatorImpl.Function
-            }
-        }
-    }
 
     hash := mediatorHash(mediator)
     mediatorMgr := mgr.mediatorMgrs[hash]
-    if mediatorMgr != nil {
-        /* TODO: Stop all executors for this mediator */
-    }
+
     /* Add new entry */
     mediatorMgr = &MediatorManager {
         manager: mgr,
@@ -201,6 +190,17 @@ func (mgr *EventManager) addEventMediator(mediator *eventsv1alpha1.EventMediator
     hash = mediatorHash(mediator)
     mgr.mediatorMgrs[hash] = mediatorMgr
     mediatorMgr.initialize()
+}
+
+func (mgr *EventManager) GetMediatorManagers() []*MediatorManager {
+    mgr.mutex.Lock()
+    defer mgr.mutex.Unlock()
+
+    ret := make([]*MediatorManager, 0)
+    for _, mediatorMgr := range mgr.mediatorMgrs {
+        ret = append(ret, mediatorMgr)
+    }
+    return ret
 }
 
 // func (mgr *EventManager) addEventMediations(mediations *eventsv1alpha1.EventMediations) {
@@ -224,7 +224,7 @@ func (mgr *EventManager) addEventMediator(mediator *eventsv1alpha1.EventMediator
 //     }
 // }
 
-func (mgr *EventManager) print () {
+func (mgr *EventManager) Print () {
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()
 }
