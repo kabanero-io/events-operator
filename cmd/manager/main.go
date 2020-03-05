@@ -79,17 +79,20 @@ func main() {
 
 	printVersion()
 
-	namespace, err := k8sutil.GetWatchNamespace()
-	if err != nil {
-		log.Error(err, "Failed to get watch namespace")
-		os.Exit(1)
-	}
-
 	operatorNamespace, err := k8sutil.GetOperatorNamespace()
 	if err != nil {
 		log.Error(err, "Failed to get operator namespace")
 		os.Exit(1)
 	}
+    log.Info(fmt.Sprintf("Operator namespace: %v", operatorNamespace))
+
+	namespace, err := k8sutil.GetWatchNamespace()
+	if err != nil {
+		//log.Error(err, "Failed to get watch namespace")
+		// os.Exit(1)
+        namespace = operatorNamespace
+	}
+
 
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
@@ -116,6 +119,33 @@ func main() {
 		os.Exit(1)
 	}
 
+    /* Must initialize early after manager is created */
+    /*
+    var imageName string
+    pod, err := k8sutil.GetPod(ctx, mgr.GetClient(), operatorNamespace)
+    if err != nil {
+        log.Error(err, "")
+        imageName = DEFAULT_IMAGE_NAME
+    } else {
+         imageName = pod.Spec.Containers[0].Image
+    }
+    */
+
+    /* TODO: get image name from the current running pod. We can't do it due to initialization orde rissue */
+    imageName := DEFAULT_IMAGE_NAME
+    mediatorName := os.Getenv(MEDIATOR_NAME_KEY)
+    /* Init events execution environment */
+    env := &eventenv.EventEnv {
+        Client: mgr.GetClient(),
+        EventMgr: &managers.EventManager{},
+        ConnectionsMgr: &connections.ConnectionsManager{},
+        ListenerMgr: &listeners.ListenerManagerDefault{},
+        IsOperator:  mediatorName == "",
+        ImageName: imageName,
+        MediatorName: mediatorName,
+    }
+    eventenv.InitEventEnv(env)
+
 	log.Info("Registering Components.")
 
 	// Setup Scheme for all resources
@@ -135,27 +165,6 @@ func main() {
 
 	log.Info("Starting the Cmd.")
 
-    var imageName string
-    pod, err := k8sutil.GetPod(ctx, mgr.GetClient(), operatorNamespace)
-    if err != nil {
-        log.Error(err, "")
-        imageName = DEFAULT_IMAGE_NAME
-    } else {
-         imageName = pod.Spec.Containers[0].Image
-    }
-
-    mediatorName := os.Getenv(MEDIATOR_NAME_KEY)
-    /* Init events execution environment */
-    env := &eventenv.EventEnv {
-        Client: mgr.GetClient(),
-        EventMgr: &managers.EventManager{},
-        ConnectionsMgr: &connections.ConnectionsManager{},
-        ListenerMgr: &listeners.ListenerManagerDefault{},
-        IsOperator:  mediatorName == "",
-        ImageName: imageName,
-        MediatorName: mediatorName,
-    }
-    eventenv.InitEventEnv(env)
 
 	// Start the Cmd
 	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {

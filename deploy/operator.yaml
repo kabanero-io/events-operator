@@ -16,9 +16,9 @@ spec:
       containers:
         - name: events-operator
           # Replace this with the built image name
-          image: REPLACE_IMAGE
-          command:
-          - events-operator
+          image: kabanero/events-operator:latest
+#          command:
+#          - events-operator
           imagePullPolicy: Always
           env:
             - name: WATCH_NAMESPACE

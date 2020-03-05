@@ -34,6 +34,12 @@ apply-crds: .apply-crds
 run-local: .apply-crds
 	operator-sdk run --local --operator-flags="$(OPERATOR_FLAGS)"
 
+oc-deploy: build-image push-image
+	oc apply -f deploy
+
+oc-undeploy:
+	oc delete deployment events-operator
+
 debug: .apply-crds
 	operator-sdk run --local --enable-delve --operator-flags="$(OPERATOR_FLAGS)"
 
