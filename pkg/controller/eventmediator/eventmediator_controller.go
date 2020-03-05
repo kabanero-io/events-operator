@@ -6,6 +6,7 @@ import (
     // routev1 "github.com/openshift/api/route/v1"
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
+	"github.com/kabanero-io/events-operator/pkg/eventcel"
 	corev1 "k8s.io/api/core/v1"
     appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -21,26 +22,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-    "os"
+    // "os"
+    "net/url"
+    "net/http"
+    "bytes"
+    "time"
+     "crypto/tls"
+    "fmt"
     //"strconv"
 )
-
-const (
-    MEDIATOR_NAME = "MEDIATOR_NAME" // environment variable. If not set, we're running as operator.
-)
-
-/* This controller can serve as either an operator, or a regular controller.
-  As an operator, it manages Deployments for each EventMEdiator crd instance
-  As a controller, the environment variable MEDIATOR_NAME is set to the name of the mediator, and it is responsible for
- updates on the EventMediator CRD instance.
-*/
-var MediatorName string
-var isOperator bool = false
-
-func init () {
-    MediatorName :=  os.Getenv(MEDIATOR_NAME)
-    isOperator = (MediatorName == "")
-}
 
 var log = logf.Log.WithName("controller_eventmediator")
 
@@ -75,7 +65,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
     // Watch for deployments
-    if isOperator {
+    if eventenv.GetEventEnv().IsOperator {
         err = c.Watch(
         &source.Kind{Type: &appsv1.Deployment{}},
         &handler.EnqueueRequestForOwner{
@@ -137,7 +127,8 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 		return reconcile.Result{}, err
 	}
 
-    if isOperator {
+    env := eventenv.GetEventEnv()
+    if env.IsOperator {
         result, err := r.reconcileDeployment(request, instance, reqLogger)
         if err != nil  || result.Requeue{
             return result, err
@@ -147,16 +138,23 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
         return result, err
     } else {
         /* plain controller for one mediator */
-        if instance.ObjectMeta.Name ==  MEDIATOR_NAME {
+        if instance.ObjectMeta.Name ==  env.MediatorName {
             /* TODO: We should handle this */
             env := eventenv.GetEventEnv()
             env.EventMgr.AddEventMediator(instance)
-            /*
-            err = env.ListenerMgr.NewListener(env, port, key, processMessage)
-            if err != nil {
-                 return reconcile.Result{}, err
-            }
-            */
+
+            listenerConfig := instance.Spec.Listener
+            if listenerConfig != nil {
+                port :=  listenerConfig.HttpsPort
+                if port == 0 {
+                     port = eventsv1alpha1.DEFAULT_HTTPS_PORT
+                }
+                key := eventsv1alpha1.MediatorHashKey(instance)
+                err = env.ListenerMgr.NewListener(env, port, key, processMessage)
+                if err != nil {
+                     return reconcile.Result{}, err
+                }
+             }
         }
     }
 
@@ -291,9 +289,10 @@ func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.Co
 func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1alpha1.EventMediator) *appsv1.Deployment {
     ls := labelsForEventMediator(mediator.Name)
     var replicas int32 = 1
+    eventEnv := eventenv.GetEventEnv()
     env  := []corev1.EnvVar {
         {
-             Name: MEDIATOR_NAME,
+             Name: eventEnv.MediatorName,
              Value: mediator.Name,
         },
     }
@@ -315,7 +314,7 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
                 },
                 Spec: corev1.PodSpec{
                     Containers: []corev1.Container{{
-                        Image:   "mchengdocker/kabanero-events:0.2",
+                        Image:   "kabanero-io/events-operator",
                         Name:    "evnetmediator",
                         Command: []string{"entrypoint"},
                         Ports: ports,
@@ -399,6 +398,116 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
 }
 
 
-func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string) error {
+func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string, url *url.URL) error {
+
+    mediator := env.EventMgr.GetMediator(key)
+    if mediator == nil {
+         // not for us
+         return nil
+    }
+    if  mediator.Spec.Mediations == nil {
+         return nil
+    }
+
+    for _, mediationsImpl := range *mediator.Spec.Mediations {
+         if  mediationsImpl.Mediation != nil {
+              eventMediationImpl := mediationsImpl.Mediation
+              if eventMediationImpl.Name != url.Path {
+                   /* not for us */
+                   return nil
+              }
+
+              /* process the message */
+              processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, url.Path) )
+              _, err := processor.ProcessMessage(message, eventMediationImpl)
+              return err
+         }
+    }
+
+    return nil
+}
+
+
+func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator) eventcel.GetEventFunctionHandler {
+    return func(name string) *eventsv1alpha1.EventFunctionImpl {
+        if mediator.Spec.Mediations == nil {
+             return nil
+         }
+
+        for _, mediationsImpl := range *mediator.Spec.Mediations {
+            if  mediationsImpl.Function != nil && mediationsImpl.Function.Name == name {
+                return mediationsImpl.Function
+             }
+         }
+         /* not found */
+         return nil
+    }
+}
+
+func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.EventMediator, mediationName string) func(dest string, buf []byte, header map[string][]string) error {
+
+    return func(dest string, buf[]byte, header map[string][]string) error {
+        connectionsMgr  := env.ConnectionsMgr
+        gvk := mediator.TypeMeta.GroupVersionKind()
+        endpoint := &eventsv1alpha1.EventEndpoint {
+             Group:  gvk.Group,
+             Kind: gvk.Kind,
+             Name: mediator.ObjectMeta.Name,
+             Id:  mediationName,
+         }
+         destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
+         for _, dest := range destinations {
+             /* TODO: add configurable timeout */
+             if dest.Url != nil {
+                 timeout, _ := time.ParseDuration("5s")
+                 err := sendMessage(*dest.Url, dest.Insecure, timeout,  buf, header)
+                 if err != nil  {
+                     /* TODO: better way to handle errors */
+                     return err
+                 }
+             }
+         }
+         return nil
+    }
+}
+
+func sendMessage(url string, insecure bool, timeout time.Duration, payload []byte, header map[string][]string) error {
+//    if klog.V(6) {
+//        klog.Infof("restProvider: Sending %s", string(payload))
+////    }
+
+    req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+    if err != nil {
+        return err
+    }
+
+    for key, arrayString := range header {
+        for _, str := range arrayString {
+            req.Header.Add(key, str)
+        }
+    }
+
+    req.Header.Add("Content-Type", "application/json")
+    tr := &http.Transport{}
+    if insecure {
+        tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    }
+
+    timeout = time.Duration(timeout* time.Second)
+    client := &http.Client{
+        Transport: tr,
+        Timeout:   timeout,
+    }
+
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK {
+        return fmt.Errorf("res_provider Send to %v failed with http status %v", url, resp.Status)
+    }
+
     return nil
 }

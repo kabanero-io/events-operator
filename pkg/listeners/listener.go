@@ -70,8 +70,7 @@ func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, p
         handler: handler,
         env: env,
     }
-	http.HandleFunc("/", listenerHandler(listener))
-	err := http.ListenAndServe(":"+ strconv.Itoa(port), nil)
+	err := http.ListenAndServe(":"+ strconv.Itoa(port), listenerHandler(listener))
     if err != nil {
          return err
     }
@@ -107,9 +106,8 @@ if _, err := os.Stat(tlsKeyPath); os.IsNotExist(err) {
         handler: handler,
         env: env,
     }
-	http.HandleFunc("/", listenerHandler(listener))
 
-	err := http.ListenAndServeTLS(":"+strconv.Itoa(port), tlsCertPath, tlsKeyPath, nil)
+	err := http.ListenAndServeTLS(":"+strconv.Itoa(port), tlsCertPath, tlsKeyPath, listenerHandler(listener))
     if err != nil {
 	   return err
     }
@@ -154,7 +152,7 @@ func listenerHandler(listener *listenerInfo) http.HandlerFunc {
 			return
 		}
 
-		err = (listener.handler)(listener.env, message, listener.key)
+		err = (listener.handler)(listener.env, message, listener.key, req.URL)
 		if err != nil {
 			klog.Errorf("Unable to send event. Error: %v", err)
 			return

@@ -3,9 +3,13 @@ import (
     "github.com/kabanero-io/events-operator/pkg/managers"
     "github.com/kabanero-io/events-operator/pkg/connections"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "net/url"
+    //"os"
 )
 
-type  ListenerHandler func(env *EventEnv, message map[string]interface{}, key string) error
+
+
+type  ListenerHandler func(env *EventEnv, message map[string]interface{}, key string, url *url.URL) error
 
 type ListenerManager interface {
     /* Create a new TLS listener with TLS. Call the hndler on every emssage recevied*/
@@ -20,6 +24,9 @@ type EventEnv  struct {
     EventMgr *managers.EventManager
     ConnectionsMgr *connections.ConnectionsManager
     ListenerMgr ListenerManager
+    ImageName string  // name of image for this instance of controller
+    MediatorName string // Kubernetes name of this mediator worker if not ""
+    IsOperator bool  // true if this instance is an operator, not a worker
 }
 
 

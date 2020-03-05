@@ -179,7 +179,7 @@ func (mgr *EventManager) AddEventMediator(mediator *eventsv1alpha1.EventMediator
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()
 
-    hash := mediatorHash(mediator)
+    hash := eventsv1alpha1.MediatorHashKey(mediator)
     mediatorMgr := mgr.mediatorMgrs[hash]
 
     /* Add new entry */
@@ -191,6 +191,19 @@ func (mgr *EventManager) AddEventMediator(mediator *eventsv1alpha1.EventMediator
     mgr.mediatorMgrs[hash] = mediatorMgr
     mediatorMgr.initialize()
 }
+
+func (mgr *EventManager) GetMediator(key string)  *eventsv1alpha1.EventMediator{
+    mgr.mutex.Lock()
+    defer mgr.mutex.Unlock()
+
+    mediatorMgr, exists := mgr.mediatorMgrs[key]
+    if  ! exists {
+        return nil
+    }
+
+    return mediatorMgr.mediator
+}
+
 
 func (mgr *EventManager) GetMediatorManagers() []*MediatorManager {
     mgr.mutex.Lock()

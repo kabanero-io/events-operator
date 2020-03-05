@@ -36,6 +36,11 @@ import (
    "github.com/kabanero-io/events-operator/pkg/listeners"
 )
 
+const (
+     MEDIATOR_NAME_KEY = "MEDIATOR-NAME" // environment variable. If not set, we're running as operator.
+     DEFAULT_IMAGE_NAME = "kabaner/events-operator"
+)
+
 // Change below variables to serve metrics on different host or port.
 var (
 	metricsHost               = "0.0.0.0"
@@ -77,6 +82,12 @@ func main() {
 	namespace, err := k8sutil.GetWatchNamespace()
 	if err != nil {
 		log.Error(err, "Failed to get watch namespace")
+		os.Exit(1)
+	}
+
+	operatorNamespace, err := k8sutil.GetOperatorNamespace()
+	if err != nil {
+		log.Error(err, "Failed to get operator namespace")
 		os.Exit(1)
 	}
 
@@ -124,13 +135,26 @@ func main() {
 
 	log.Info("Starting the Cmd.")
 
+    var imageName string
+    pod, err := k8sutil.GetPod(ctx, mgr.GetClient(), operatorNamespace)
+    if err != nil {
+        log.Error(err, "")
+        imageName = DEFAULT_IMAGE_NAME
+    } else {
+         imageName = pod.Spec.Containers[0].Image
+    }
+
+    mediatorName := os.Getenv(MEDIATOR_NAME_KEY)
     /* Init events execution environment */
     env := &eventenv.EventEnv {
         Client: mgr.GetClient(),
         EventMgr: &managers.EventManager{},
         ConnectionsMgr: &connections.ConnectionsManager{},
         ListenerMgr: &listeners.ListenerManagerDefault{},
-    } 
+        IsOperator:  mediatorName == "",
+        ImageName: imageName,
+        MediatorName: mediatorName,
+    }
     eventenv.InitEventEnv(env)
 
 	// Start the Cmd

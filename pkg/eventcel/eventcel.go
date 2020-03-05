@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
     eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
-    "github.com/kabanero-io/events-operator/pkg/managers"
+    // "github.com/kabanero-io/events-operator/pkg/managers"
 // "github.com/kabanero-io/events-operator/pkg/endpoints"
 //	"github.com/kabanero-io/events-operator/pkg/messages"
 	"github.com/kabanero-io/events-operator/pkg/utils"
@@ -232,9 +232,15 @@ type EventTriggerDefinition struct {
 	Functions     map[string]map[interface{}]interface{}   // function name to function body
 }
 
+/* Handler to find event function given function name */
+type GetEventFunctionHandler func(name string) *eventsv1alpha1.EventFunctionImpl
+
+type SendEventHandler func(dest string, buf []byte, header map[string][]string) error
+
 // Processor contains the event trigger definition and the file it was loaded from
 type Processor struct {
-    eventManager *managers.EventManager
+    getFunctionHandler GetEventFunctionHandler
+    sendEventHandler SendEventHandler
 	 // env              *endpoints.Environment
 	// triggerDir       string // directory where trigger file is stored
 	additionalFuncDecls cel.EnvOption
@@ -242,10 +248,10 @@ type Processor struct {
 }
 
 // NewProcessor creates a new trigger processor.
-func NewProcessor( /*env *endpoints.Environment,*/ mgr *managers.EventManager) *Processor {
+func NewProcessor( functionHandler GetEventFunctionHandler, sendHandler SendEventHandler) *Processor {
 	p := &Processor{
-        eventManager : mgr,
-		/*env: env,*/
+        getFunctionHandler: functionHandler,
+        sendEventHandler: sendHandler,
 	}
 	p.initCELFuncs()
     return p
@@ -1552,8 +1558,8 @@ func (p *Processor) callCEL(functionVal ref.Val, param ref.Val) ref.Val {
 	}
 
 
-	functionDecl, ok := p.eventManager.GetFunction(function)
-	if !ok {
+	functionDecl  := p.getFunctionHandler(function)
+	if functionDecl == nil {
 		klog.Errorf("callCEL function %v not found", function)
 		return types.ValOrErr(functionVal, "function %v not found", function)
 	}
@@ -1825,7 +1831,7 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 
 
-	var header interface{} = nil
+	header := make(map[string][]string)
 	if numParams == 3 {
 		header, err = convertToHeaderMap(context.Value())
 		if err != nil {
@@ -1844,11 +1850,10 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 */
 
-   /* TODO */
-//	err = p.env.MessageService.Send(dest, buf, header)
-//	if err != nil {
-//		return types.ValOrErr(nil, "sendEventCEL: unable to send event: %v", err)
-//	}
+	err = p.sendEventHandler(dest, buf, header)
+	if err != nil {
+		return types.ValOrErr(nil, "sendEventCEL: unable to send event: %v", err)
+	}
 
 	if klog.V(6) {
 		klog.Infof("sendEvent successfully sent message to destination '%s'", dest)

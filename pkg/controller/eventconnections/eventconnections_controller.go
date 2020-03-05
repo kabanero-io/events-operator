@@ -5,7 +5,7 @@ import (
 
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
-	corev1 "k8s.io/api/core/v1"
+	// corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,21 +47,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource EventConnections
-	err = c.Watch(&source.Kind{Type: &eventsv1alpha1.EventConnections{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
-	}
-
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
-	// Watch for changes to secondary resource Pods and requeue the owner EventConnections
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &eventsv1alpha1.EventConnections{},
-	})
-	if err != nil {
-		return err
-	}
-
+    if !eventenv.GetEventEnv().IsOperator {
+        err = c.Watch(&source.Kind{Type: &eventsv1alpha1.EventConnections{}}, &handler.EnqueueRequestForObject{})
+        if err != nil {
+            return err
+        }
+    }
 	return nil
 }
 
