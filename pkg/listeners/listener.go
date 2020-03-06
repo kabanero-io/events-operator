@@ -52,6 +52,12 @@ type ListenerManagerDefault struct {
     mutex sync.Mutex 
 }
 
+func NewDefaultListenerManager() eventenv.ListenerManager {
+    return &ListenerManagerDefault {
+        listeners: make(map[int]*listenerInfo),
+    }
+}
+
 // NewListener creates a new event listener on port 9080
 func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, port int, key string, handler eventenv.ListenerHandler) error {
     listenerMgr.mutex.Lock()
@@ -61,7 +67,7 @@ func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, p
          return fmt.Errorf("Listener on port %v already exists", port)
     }
 
-	klog.Infof("Starting listener on port 9080")
+	klog.Infof("Starting listener on port %v", port)
 
 
     listener := &listenerInfo {

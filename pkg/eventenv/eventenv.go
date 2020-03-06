@@ -8,6 +8,9 @@ import (
 )
 
 
+const (
+     MEDIATOR_NAME_KEY = "MEDIATOR-NAME" // environment variable. If not set, we're running as operator.
+)
 
 type  ListenerHandler func(env *EventEnv, message map[string]interface{}, key string, url *url.URL) error
 
@@ -24,7 +27,6 @@ type EventEnv  struct {
     EventMgr *managers.EventManager
     ConnectionsMgr *connections.ConnectionsManager
     ListenerMgr ListenerManager
-    ImageName string  // name of image for this instance of controller
     MediatorName string // Kubernetes name of this mediator worker if not ""
     IsOperator bool  // true if this instance is an operator, not a worker
 }

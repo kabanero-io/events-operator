@@ -3,7 +3,7 @@ IMAGE_TAG ?= latest
 OPERATOR_SDK_RELEASE_VERSION ?= v0.15.2
 OPERATOR_FLAGS = --zap-level=debug --zap-encoder=console
 CRDS = $(wildcard deploy/crds/*_crd.yaml)
-SAMPLE_CRS=$(wildcard pkg/apis/events/v1alpha1/sample_crds/example1/*.yaml)
+SAMPLE_CRS=$(wildcard sample_crds/example1/*.yaml)
 
 .PHONY: setup generate install build build-all format test
 
@@ -35,6 +35,7 @@ run-local: .apply-crds
 	operator-sdk run --local --operator-flags="$(OPERATOR_FLAGS)"
 
 oc-deploy: build-image push-image
+	sleep 2
 	oc apply -f deploy
 
 oc-undeploy:

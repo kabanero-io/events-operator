@@ -3,7 +3,7 @@ package eventmediator
 import (
 	"context"
 
-    // routev1 "github.com/openshift/api/route/v1"
+    routev1 "github.com/openshift/api/route/v1"
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
 	"github.com/kabanero-io/events-operator/pkg/eventcel"
@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+    "github.com/operator-framework/operator-sdk/pkg/k8sutil"
     // "os"
     "net/url"
     "net/http"
@@ -85,7 +86,17 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	    if err != nil {
 		    return err
         }
-    } 
+
+        err = c.Watch(
+        &source.Kind{Type: &routev1.Route{}},
+        &handler.EnqueueRequestForOwner{
+            IsController: true,
+            OwnerType:    &eventsv1alpha1.EventMediator{}},
+        )
+	    if err != nil {
+		    return err
+        }
+    }
 
 	return nil
 }
@@ -129,12 +140,7 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 
     env := eventenv.GetEventEnv()
     if env.IsOperator {
-        result, err := r.reconcileDeployment(request, instance, reqLogger)
-        if err != nil  || result.Requeue{
-            return result, err
-        }
-
-        result, err = r.reconcileService(request, instance, reqLogger)
+        result, err := r.reconcileOperator(request, instance, reqLogger) 
         return result, err
     } else {
         /* plain controller for one mediator */
@@ -146,6 +152,7 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
             listenerConfig := instance.Spec.Listener
             if listenerConfig != nil {
                 port :=  listenerConfig.HttpsPort
+                reqLogger.Info(fmt.Sprintf("port is %v, default port is %v", port, eventsv1alpha1.DEFAULT_HTTPS_PORT))
                 if port == 0 {
                      port = eventsv1alpha1.DEFAULT_HTTPS_PORT
                 }
@@ -163,25 +170,50 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 
 /* Reconcile deployment for an operator */
 func (r *ReconcileEventMediator) reconcileOperator(request reconcile.Request, mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
+    /* TODO: error checking: what if only subset works? */
+    reqLogger.Info("In reconcileOperator")
     result, err := r.reconcileDeployment(request, mediator, reqLogger)
     if err != nil {
+        reqLogger.Error(err, "error from reconcileDeployment")
         return result, err
     }
     result, err = r.reconcileService(request, mediator, reqLogger)
     if err != nil {
+        reqLogger.Error(err, "error from reconcileService")
+        return result, err
+    }
+
+    result, err = r.reconcileRoute(request, mediator, reqLogger)
+    if err != nil {
+        reqLogger.Error(err, "error from reconcileRoute")
         return result, err
     }
 	return reconcile.Result{}, nil
 }
 
+/* Return service account name and image name of current operator pod */
+func getPodInfo(client client.Client, namespace string) (string, string, error) {
+    var imageName string
+    pod, err := k8sutil.GetPod(context.TODO(), client, namespace)
+    if err != nil {
+        return "", "", err
+    } else {
+         serviceAccountName := pod.Spec.ServiceAccountName
+         imageName = pod.Spec.Containers[0].Image
+         return serviceAccountName, imageName, nil
+    }
+}
+
 /* reconcile Operator */
 func (r *ReconcileEventMediator) reconcileDeployment(request reconcile.Request, instance *eventsv1alpha1.EventMediator,  reqLogger logr.Logger) (reconcile.Result, error) {
+    reqLogger.Info("In reconcileDeployment")
     /* Check if the deployment already exists, if not create a new one */
     deployment := &appsv1.Deployment{}
     err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
     if err != nil && errors.IsNotFound(err) {
         // Define a new deployment
-        dep := r.deploymentForEventMediator(instance)
+        serviceAccountName, imageName, err := getPodInfo(r.client, instance.Namespace)
+        dep := r.deploymentForEventMediator(instance, serviceAccountName, imageName)
         reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
         err = r.client.Create(context.TODO(), dep)
         if err != nil {
@@ -211,15 +243,16 @@ func (r *ReconcileEventMediator) reconcileDeployment(request reconcile.Request, 
 
 /* reconcile Operator */
 func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, instance *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
+    reqLogger.Info("In reconcileService")
     service := &corev1.Service{}
     err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, service)
     if err != nil && errors.IsNotFound(err) {
         // Define a new service
-        serv := r.serviceForEventMediator(instance)
-        reqLogger.Info("Creating a new Service", "Service.Namespace", serv.Namespace, "Service.Name", serv.Name)
+        service = r.serviceForEventMediator(instance, reqLogger)
+        reqLogger.Info("Creating a new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
         err = r.client.Create(context.TODO(), service)
         if err != nil {
-            reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", serv.Namespace, "Service.Name", serv.Name)
+            reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
             return reconcile.Result{}, err
         }
         // Servicecreated successfully - return and requeue
@@ -230,7 +263,7 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
     }
 
     if portChangedForService(service, instance)  {
-        service.Spec.Ports = generateServicePorts(instance)
+        service.Spec.Ports = generateServicePorts(instance, reqLogger)
         err = r.client.Update(context.TODO(), service)
         if err != nil {
            reqLogger.Error(err, "Failed to update Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
@@ -278,7 +311,7 @@ func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.Co
              port = int32(listener.HttpsPort)
              ports = append(ports, corev1.ContainerPort {
                     ContainerPort:  port,
-                    Name:          "httpsPort",
+                    Name:          "port",
                } )
         }
     }
@@ -286,14 +319,28 @@ func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.Co
 }
 
 // Return a deployment object
-func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1alpha1.EventMediator) *appsv1.Deployment {
+func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1alpha1.EventMediator, operatorServiceAccount string, imageName string) *appsv1.Deployment {
+
     ls := labelsForEventMediator(mediator.Name)
     var replicas int32 = 1
-    eventEnv := eventenv.GetEventEnv()
+    // eventEnv := eventenv.GetEventEnv()
     env  := []corev1.EnvVar {
         {
-             Name: eventEnv.MediatorName,
+             Name: eventenv.MEDIATOR_NAME_KEY,
              Value: mediator.Name,
+        }, 
+        {
+             Name: "POD_NAME",
+             ValueFrom:  &corev1.EnvVarSource {
+                  FieldRef: &corev1.ObjectFieldSelector {
+                       APIVersion: "v1",
+                       FieldPath: "metadata.name",
+                  },
+             },
+        },
+        {
+             Name: "WATCH_NAMESPACE",
+             Value: mediator.Namespace,
         },
     }
     ports := generateDeploymentPorts(mediator)
@@ -313,8 +360,9 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
                     Labels: ls,
                 },
                 Spec: corev1.PodSpec{
+                    ServiceAccountName: operatorServiceAccount,
                     Containers: []corev1.Container{{
-                        Image:   "kabanero-io/events-operator",
+                        Image:   imageName,
                         Name:    "evnetmediator",
                         Command: []string{"entrypoint"},
                         Ports: ports,
@@ -334,12 +382,15 @@ func labelsForEventMediator(name string) map[string]string {
     return map[string]string{"app": name, "eventmediator_cr": name}
 }
 
-func generateServicePorts(mediator *eventsv1alpha1.EventMediator) []corev1.ServicePort {
+func generateServicePorts(mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) []corev1.ServicePort {
+
     ports := make([]corev1.ServicePort, 0)
     if mediator.Spec.Listener != nil {
-        listener := mediator.Spec.Listener 
+        reqLogger.Info("mediator.Spec.Listener not nil")
+        listener := mediator.Spec.Listener
         var port int32
         if listener.HttpsPort != 0 {
+             reqLogger.Info("https port not 0")
              port = int32(listener.HttpsPort)
              ports = append(ports, corev1.ServicePort {
                     Port:  port,
@@ -350,9 +401,11 @@ func generateServicePorts(mediator *eventsv1alpha1.EventMediator) []corev1.Servi
 }
 
 // Return a Service object
-func (r *ReconcileEventMediator) serviceForEventMediator(mediator *eventsv1alpha1.EventMediator) *corev1.Service {
+func (r *ReconcileEventMediator) serviceForEventMediator(mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) *corev1.Service {
     ls := labelsForEventMediator(mediator.Name)
-    servicePorts := generateServicePorts(mediator)
+    servicePorts := generateServicePorts(mediator, reqLogger)
+
+    reqLogger.Info(fmt.Sprintf( "mediator: %v, ports: %v", mediator, servicePorts))
 
     service := &corev1.Service{
         ObjectMeta: metav1.ObjectMeta{
@@ -426,6 +479,7 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
 
     return nil
 }
+
 
 
 func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator) eventcel.GetEventFunctionHandler {
@@ -510,4 +564,67 @@ func sendMessage(url string, insecure bool, timeout time.Duration, payload []byt
     }
 
     return nil
+}
+
+
+// Return a Service object
+func (r *ReconcileEventMediator) routeForEventMediator(mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) *routev1.Route {
+    ls := labelsForEventMediator(mediator.Name)
+
+    route := &routev1.Route {
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      mediator.Name,
+            Namespace: mediator.Namespace,
+            Labels: ls,
+        },
+        Spec: routev1.RouteSpec {
+            To: routev1.RouteTargetReference {
+                 Kind: "Service",
+                 Name: mediator.Name,
+            },
+        },
+    }
+
+    // Set owner and controller
+    controllerutil.SetControllerReference(mediator, route, r.scheme)
+    return route
+}
+
+/* reconcile Operator */
+func (r *ReconcileEventMediator) reconcileRoute(request reconcile.Request, instance *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
+    reqLogger.Info("In reconcileRoute")
+    if instance.Spec.Listener == nil || !instance.Spec.Listener.CreateRoute {
+        return reconcile.Result{}, nil
+    }
+    route := &routev1.Route{}
+    err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, route)
+    if err != nil && errors.IsNotFound(err) {
+        // Define a new Route
+        route = r.routeForEventMediator(instance, reqLogger)
+        reqLogger.Info("Creating a new Route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+        err = r.client.Create(context.TODO(), route)
+        if err != nil {
+            reqLogger.Error(err, "Failed to create new route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+            return reconcile.Result{}, err
+        }
+        // Servicecreated successfully - return and requeue
+        return reconcile.Result{Requeue: true}, nil
+    } else if err != nil {
+        reqLogger.Error(err, "Failed to get Route")
+        return reconcile.Result{}, err
+    }
+
+/*
+    if portChangedForRoute(route, instance)  {
+        route.Spec.Ports = generateRoutePorts(instance, reqLogger)
+        err = r.client.Update(context.TODO(), route)
+        if err != nil {
+           reqLogger.Error(err, "Failed to update Route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+            return reconcile.Result{}, err
+         }
+        // Spec updated - return and requeue
+        return reconcile.Result{Requeue: true}, nil
+    }
+*/
+    return reconcile.Result{}, nil
 }

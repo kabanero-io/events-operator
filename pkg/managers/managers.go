@@ -175,6 +175,12 @@ type EventManager struct {
 //    return obj, ok
 //}
 
+func NewEventManager() *EventManager {
+    return  &EventManager {
+        mediatorMgrs: make(map[string]*MediatorManager),
+    }
+}
+
 func (mgr *EventManager) AddEventMediator(mediator *eventsv1alpha1.EventMediator) {
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()
@@ -186,6 +192,7 @@ func (mgr *EventManager) AddEventMediator(mediator *eventsv1alpha1.EventMediator
     mediatorMgr = &MediatorManager {
         manager: mgr,
         mediator: mediator,
+        containedEventMediationImplMgr: make(map[string]*EventMediationImplManager),
     }
     hash = mediatorHash(mediator)
     mgr.mediatorMgrs[hash] = mediatorMgr

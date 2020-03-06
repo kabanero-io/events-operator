@@ -10,6 +10,12 @@ type ConnectionsManager struct {
     mutex sync.Mutex
 }
 
+func NewConnectionsManager() *ConnectionsManager {
+    return &ConnectionsManager {
+         connections: make(map[string]*eventsv1alpha1.EventConnections),
+    }
+}
+
 func getKey( connections *eventsv1alpha1.EventConnections) string {
     return connections.APIVersion + "/" + connections.Kind + "/" + connections.Namespace + "/" + connections.Name
 }

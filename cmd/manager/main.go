@@ -34,10 +34,11 @@ import (
    "github.com/kabanero-io/events-operator/pkg/eventenv"
    "github.com/kabanero-io/events-operator/pkg/connections"
    "github.com/kabanero-io/events-operator/pkg/listeners"
+
+    routev1 "github.com/openshift/api/route/v1"
 )
 
 const (
-     MEDIATOR_NAME_KEY = "MEDIATOR-NAME" // environment variable. If not set, we're running as operator.
      DEFAULT_IMAGE_NAME = "kabaner/events-operator"
 )
 
@@ -101,13 +102,19 @@ func main() {
 		os.Exit(1)
 	}
 
+    mediatorName := os.Getenv(eventenv.MEDIATOR_NAME_KEY)
+    isOperator := mediatorName == ""
+
 	ctx := context.TODO()
-	// Become the leader before proceeding
-	err = leader.Become(ctx, "events-operator-lock")
-	if err != nil {
-		log.Error(err, "")
-		os.Exit(1)
-	}
+
+	// If operator, become the leader before proceeding
+    if isOperator {
+        err = leader.Become(ctx, "events-operator-lock")
+        if err != nil {
+            log.Error(err, "")
+            os.Exit(1)
+        }
+    }
 
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := manager.New(cfg, manager.Options{
@@ -119,29 +126,15 @@ func main() {
 		os.Exit(1)
 	}
 
-    /* Must initialize early after manager is created */
-    /*
-    var imageName string
-    pod, err := k8sutil.GetPod(ctx, mgr.GetClient(), operatorNamespace)
-    if err != nil {
-        log.Error(err, "")
-        imageName = DEFAULT_IMAGE_NAME
-    } else {
-         imageName = pod.Spec.Containers[0].Image
-    }
-    */
 
     /* TODO: get image name from the current running pod. We can't do it due to initialization orde rissue */
-    imageName := DEFAULT_IMAGE_NAME
-    mediatorName := os.Getenv(MEDIATOR_NAME_KEY)
     /* Init events execution environment */
     env := &eventenv.EventEnv {
         Client: mgr.GetClient(),
-        EventMgr: &managers.EventManager{},
-        ConnectionsMgr: &connections.ConnectionsManager{},
-        ListenerMgr: &listeners.ListenerManagerDefault{},
-        IsOperator:  mediatorName == "",
-        ImageName: imageName,
+        EventMgr: managers.NewEventManager(),
+        ConnectionsMgr: connections.NewConnectionsManager(),
+        ListenerMgr: listeners.NewDefaultListenerManager(),
+        IsOperator:  isOperator,
         MediatorName: mediatorName,
     }
     eventenv.InitEventEnv(env)
@@ -153,6 +146,12 @@ func main() {
 		log.Error(err, "")
 		os.Exit(1)
 	}
+
+    //Add route scheme
+    if err := routev1.AddToScheme(mgr.GetScheme()); err != nil {
+        log.Error(err, "")
+        os.Exit(1)
+    }
 
 	// Setup all Controllers
 	if err := controller.AddToManager(mgr); err != nil {

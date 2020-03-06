@@ -1,0 +1,15 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: example1
+spec:
+  listener:
+    httpsPort: 9443
+    createRoute: true
+  mediations:
+    - mediation:
+        name: webhook
+        input: message
+        sendTo: [ "dest"  ]
+        body:
+          - = : 'sendEvent(dest, message.body, message.header)'

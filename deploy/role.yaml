@@ -70,17 +70,8 @@ rules:
   - events.kabanero.io
   resources:
   - '*'
-  - eventtopics
-  - eventlisteners
   - eventmediators
   - eventconnections
-  - eventexternallisteners
-  - eventgateways
-  - eventexternalproviders
-  - eventexternaltopics
-  - eventcodes
-  - eventmediations
-  - eventfunctions
   verbs:
   - create
   - delete
@@ -89,3 +80,10 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - route.openshift.io
+  attributeRestrictions: null
+  resources:
+  - routes
+  verbs:
+  - '*'

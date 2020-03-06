@@ -8,6 +8,7 @@ require (
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/kabanero-io/kabanero-events v0.0.0-20200210151511-bd111a6f24a6
 	github.com/kabanero-io/kabanero-operator v0.0.0-20200227142632-72b6033d63d7
+	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible
 	github.com/operator-framework/operator-sdk v0.15.2
 	github.com/spf13/pflag v1.0.5
 	google.golang.org/genproto v0.0.0-20191028173616-919d9bdd9fe6
