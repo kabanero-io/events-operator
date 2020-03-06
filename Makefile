@@ -27,7 +27,7 @@ push-image:
 
 .apply-crds: $(CRDS)
 	echo $(CRDS) | tr ' ' '\n' | xargs -I{} oc apply -f {}
-	touch .applycrds
+	touch .apply-crds
 
 apply-crds: .apply-crds
 

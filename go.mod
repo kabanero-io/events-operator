@@ -4,9 +4,10 @@ go 1.13
 
 require (
 	github.com/go-logr/logr v0.1.0
+	github.com/go-openapi/spec v0.19.5 // indirect
+	github.com/go-openapi/swag v0.19.7 // indirect
 	github.com/google/cel-go v0.3.2
 	github.com/google/go-github v17.0.0+incompatible
-	github.com/kabanero-io/kabanero-events v0.0.0-20200210151511-bd111a6f24a6
 	github.com/kabanero-io/kabanero-operator v0.0.0-20200227142632-72b6033d63d7
 	github.com/operator-framework/operator-sdk v0.15.2
 	github.com/spf13/pflag v1.0.5
@@ -16,6 +17,7 @@ require (
 	k8s.io/apimachinery v0.17.1
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
+	k8s.io/kube-openapi v0.0.0-20200121204235-bf4fb3bd569c // indirect
 	sigs.k8s.io/controller-runtime v0.4.0
 )
 
@@ -48,3 +50,5 @@ replace (
 replace github.com/docker/docker => github.com/moby/moby v0.7.3-0.20190826074503-38ab9da00309 // Required by Helm
 
 replace github.com/openshift/api => github.com/openshift/api v0.0.0-20190924102528-32369d4db2ad // Required until https://github.com/operator-framework/operator-lifecycle-manager/pull/1241 is resolved
+
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v2.3.2+incompatible
