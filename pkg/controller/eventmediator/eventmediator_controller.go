@@ -23,12 +23,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
     "github.com/operator-framework/operator-sdk/pkg/k8sutil"
+
+    "k8s.io/klog"
     // "os"
     "net/url"
     "net/http"
     "bytes"
     "time"
      "crypto/tls"
+    "strings"
     "fmt"
     //"strconv"
 )
@@ -452,31 +455,38 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
 
 
 func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string, url *url.URL) error {
+    klog.Infof("In processMessage message: %v, key: %v, url: %v, url path %v", message, key, url, url.Path)
+    path := url.Path
+    if strings.HasPrefix(path, "/") {
+        path = path[1:] 
+    }
 
     mediator := env.EventMgr.GetMediator(key)
     if mediator == nil {
+        klog.Info("No meditor found")
          // not for us
          return nil
     }
     if  mediator.Spec.Mediations == nil {
+        klog.Info("No mediation within mediator")
          return nil
     }
 
     for _, mediationsImpl := range *mediator.Spec.Mediations {
          if  mediationsImpl.Mediation != nil {
               eventMediationImpl := mediationsImpl.Mediation
-              if eventMediationImpl.Name != url.Path {
-                   /* not for us */
-                   return nil
-              }
-
-              /* process the message */
-              processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, url.Path) )
-              _, err := processor.ProcessMessage(message, eventMediationImpl)
-              return err
+              klog.Infof("Testing mediation %v", eventMediationImpl.Name)
+              if eventMediationImpl.Name == path {
+                  klog.Info("mediation found")
+                  /* process the message */
+                  processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
+                  _, err := processor.ProcessMessage(message, eventMediationImpl)
+                  return err
+               }
          }
     }
 
+    klog.Info("No matching mediation")
     return nil
 }
 
@@ -514,6 +524,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
              /* TODO: add configurable timeout */
              if dest.Url != nil {
                  timeout, _ := time.ParseDuration("5s")
+                 klog.Infof("generateSendEventHandler: sending emssage to %v", dest.Url)
                  err := sendMessage(*dest.Url, dest.Insecure, timeout,  buf, header)
                  if err != nil  {
                      /* TODO: better way to handle errors */

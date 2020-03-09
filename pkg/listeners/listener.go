@@ -160,9 +160,10 @@ func listenerHandler(listener *listenerInfo) http.HandlerFunc {
 
 		err = (listener.handler)(listener.env, message, listener.key, req.URL)
 		if err != nil {
-			klog.Errorf("Unable to send event. Error: %v", err)
+			klog.Errorf("Error processing event: %v", err)
 			return
 		}
+		klog.Info("Completed event processing.\n")
 
 		writer.WriteHeader(http.StatusAccepted)
 	}

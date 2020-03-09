@@ -3,6 +3,7 @@ package managers
 import (
 //	"context"
 	"sync"
+    "k8s.io/klog"
 
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 //	corev1 "k8s.io/api/core/v1"
@@ -35,9 +36,9 @@ func namespaceNameHash(namespace string, name string ) string {
     return namespace + "/" + name
 }
 
-func mediatorHash(mediator *eventsv1alpha1.EventMediator) string {
-    return namespaceNameHash(mediator.Namespace, mediator.Name)
-}
+// func mediatorHash(mediator *eventsv1alpha1.EventMediator) string {
+//    return namespaceNameHash(mediator.Namespace, mediator.Name)
+//}
 
 // func mediationsHash(mediations *eventsv1alpha1.EventMediations) string {
 //     return namespaceNameHash(mediations.Namespace, mediations.Name)
@@ -185,16 +186,14 @@ func (mgr *EventManager) AddEventMediator(mediator *eventsv1alpha1.EventMediator
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()
 
-    hash := eventsv1alpha1.MediatorHashKey(mediator)
-    mediatorMgr := mgr.mediatorMgrs[hash]
-
     /* Add new entry */
-    mediatorMgr = &MediatorManager {
+    mediatorMgr := &MediatorManager {
         manager: mgr,
         mediator: mediator,
         containedEventMediationImplMgr: make(map[string]*EventMediationImplManager),
     }
-    hash = mediatorHash(mediator)
+    hash := eventsv1alpha1.MediatorHashKey(mediator)
+    klog.Infof("Adding new EventMediator with key: %v", hash)
     mgr.mediatorMgrs[hash] = mediatorMgr
     mediatorMgr.initialize()
 }
@@ -203,10 +202,14 @@ func (mgr *EventManager) GetMediator(key string)  *eventsv1alpha1.EventMediator{
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()
 
+    klog.Infof("GetMediator: look up key: %v", key)
+
     mediatorMgr, exists := mgr.mediatorMgrs[key]
     if  ! exists {
+        klog.Infof("GetMediator: mediator not found")
         return nil
     }
+    klog.Infof("GetMediator: mediator found ")
 
     return mediatorMgr.mediator
 }
@@ -215,6 +218,7 @@ func (mgr *EventManager) GetMediator(key string)  *eventsv1alpha1.EventMediator{
 func (mgr *EventManager) GetMediatorManagers() []*MediatorManager {
     mgr.mutex.Lock()
     defer mgr.mutex.Unlock()
+
 
     ret := make([]*MediatorManager, 0)
     for _, mediatorMgr := range mgr.mediatorMgrs {

@@ -1,0 +1,13 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: example1
+spec:
+  connections:
+    - from:
+        group: events.kabanero.io
+        kind: EventMediator
+        name: example1
+        id: webhook 
+      to:
+        - url: http://example1:9443/mediation1

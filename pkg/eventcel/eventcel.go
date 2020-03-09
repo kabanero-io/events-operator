@@ -391,13 +391,11 @@ func (p *Processor) parseTrigger(trigger map[interface{}]interface{}) ([]string,
 
 // ProcessMessage processes an event message.
 func (p *Processor) ProcessMessage(message map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl) ([]map[string]interface{}, error) {
-	if klog.V(5) {
-		klog.Infof("Entering Processor.ProcessMessage. message: %v, mediation: %v", message, mediation)
-		defer klog.Infof("Leaving Processor.ProcessMessage")
-	}
+    klog.Infof("Entering Processor.ProcessMessage. message: %v, mediation: %v", message, mediation)
+	defer klog.Infof("Leaving Processor.ProcessMessage")
 
 	savedVariables := make([]map[string]interface{}, 0)
-    env, variables, err := p.initializeCELEnv(message, mediation.Input)
+    env, variables, err := p.initializeCELEnv(message, mediation.Input, mediation.SendTo)
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +488,8 @@ func (p *Processor) evalEventStatementArray(env cel.Env, variables map[string]in
 func parseAssignment(statement string) (string, string, error ) {
     index := strings.Index(statement, "=")
     if index < 0 {
-         return "", "", fmt.Errorf("not an assignment statement: %v", statement)
+          return "", statement, nil
+         // return "", "", fmt.Errorf("not an assignment statement: %v", statement)
     }
     name := statement[0:index]
     value := statement[:index+1]
@@ -654,9 +653,11 @@ func (p *Processor) initializeEmptyCELEnv() (cel.Env, error) {
 /* Get initial CEL environment
 Return: cel.Env: the CEL environment
 	map[string]interface{}: variables used during substitution
+    inputVariableName name of input variable, to be bound to message
+    sendTo: name of destinations
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariableName string) (cel.Env, map[string]interface{}, error) {
+func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariableName string, sendTo []string) (cel.Env, map[string]interface{}, error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
@@ -677,14 +678,20 @@ func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariab
 	/* Add message as a new variable */
 	variables[inputVariableName] = message
 
+    /* set the destination variables */
+    for _, dest := range sendTo {
+	    destIdent := decls.NewIdent(dest, decls.NewPrimitiveType(exprpb.Type_STRING), nil)
+        env, err = env.Extend(cel.Declarations(destIdent))
+        if err != nil {
+            return nil, nil, err
+       }
+	   variables[dest] = dest
+    }
+
 	return env, variables, nil
 }
 
 func (p *Processor) setOneVariable(env cel.Env, name string, val string, variables map[string]interface{}) (cel.Env, error) {
-	if name == "" {
-		/* name not set */
-		return env, nil
-	}
 
 	val = strings.Trim(val, " ")
 
@@ -710,8 +717,13 @@ func (p *Processor) setOneVariable(env cel.Env, name string, val string, variabl
 		klog.Infof("When setting variable %s to %s, eval of value results in typename: %s, value type: %T, value: %s\n", name, val, out.Type().TypeName(), out.Value(), out.Value())
 	}
 
-	env, err = createOneVariable(env, name, val, out, variables)
-	return env, err
+    if name != "" {
+        env, err = createOneVariable(env, name, val, out, variables)
+	    return env, err
+    } else {
+         /* no variable to assign */
+         return env, nil
+    }
 }
 
 func createOneVariable(env cel.Env, entireName string, val string, out ref.Val, variables map[string]interface{}) (cel.Env, error) {
@@ -1852,12 +1864,11 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 
 	err = p.sendEventHandler(dest, buf, header)
 	if err != nil {
+		klog.Errorf("sendEvent unable to send event to destination $s: '%v'", dest, err)
 		return types.ValOrErr(nil, "sendEventCEL: unable to send event: %v", err)
 	}
 
-	if klog.V(6) {
-		klog.Infof("sendEvent successfully sent message to destination '%s'", dest)
-    }
+    klog.Infof("sendEvent successfully sent message to destination '%s'", dest)
 	return types.String("")
 }
 
