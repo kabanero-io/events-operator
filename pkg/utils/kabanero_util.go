@@ -18,7 +18,10 @@ package utils
 
 import (
 	"fmt"
-	// "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
+	"github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
+	"k8s.io/client-go/rest"
+	"net/url"
+
 	//"io/ioutil"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,7 +91,6 @@ func GetKabaneroNamespace() string {
 //}
 
 // GetTriggerInfo Get the URL to trigger gzipped tar and its sha256 checksum.
-/*
 func GetTriggerInfo(client rest.Interface, namespace string) (*url.URL, string, error) {
 	kabaneroList := v1alpha2.KabaneroList{}
 	err := client.Get().Resource(KABANEROS).Namespace(namespace).Do().Into(&kabaneroList)
@@ -103,10 +105,10 @@ func GetTriggerInfo(client rest.Interface, namespace string) (*url.URL, string, 
 
 		for _, triggerSpec := range kabanero.Spec.Triggers {
 			if klog.V(1) {
-				klog.Infof("Success. Found trigger '%s' (checksum: %s) -> %s", triggerSpec.Id, triggerSpec.Sha256, triggerSpec.Url)
+				klog.Infof("Success. Found trigger '%s' (checksum: %s) -> %s", triggerSpec.Id, triggerSpec.Sha256, triggerSpec.Https.Url)
 			}
-			if triggerSpec.Url != "" {
-				url, err := url.Parse(triggerSpec.Url)
+			if triggerSpec.Https.Url != "" {
+				url, err := url.Parse(triggerSpec.Https.Url)
 				return url, triggerSpec.Sha256, err
 			}
 		}
@@ -114,7 +116,6 @@ func GetTriggerInfo(client rest.Interface, namespace string) (*url.URL, string, 
 
 	return nil, "", fmt.Errorf("unable to find trigger URL in any kabanero definition")
 }
-*/
 
 /*
 GetGitHubSecret Find the user/token for a GitHub API key. The format of the secret:

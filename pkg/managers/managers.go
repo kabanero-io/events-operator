@@ -50,7 +50,7 @@ func namespaceNameHash(namespace string, name string ) string {
 type EventMediationImplManager struct {
     manager *EventManager // top level manager
     mediator *eventsv1alpha1.EventMediator // the mediator that imports or contains this mediation impl
-//    mediations *eventsv1alpha1.EventMediations // The meditionas resource that contains this impl. May be null
+//    mediations *eventsv1alpha1.EventMediations // The mediations resource that contains this impl. May be null
     mediationImpl  *eventsv1alpha1.EventMediationImpl // the mediation impl to be run
 }
 
@@ -61,7 +61,7 @@ func (executor *EventMediationImplManager) Stop () {
 }
 
 
-/* Responsible for managing the life cycle of all mediations contained within an Mediations resource*/
+/* Responsible for managing the life cycle of all mediations contained within an Mediations resource */
 // type MediationsManager struct {
 //    manager *EventManager    // top level manager
 //    mediator *eventsv1alpha1.EventMediator // the mediator that imports the mediations
