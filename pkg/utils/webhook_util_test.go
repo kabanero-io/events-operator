@@ -1,3 +1,5 @@
+// +build full_test
+
 /*
 Copyright 2020 IBM Corporation
 
