@@ -1,3 +1,5 @@
+// +build full_test
+
 /*
 Copyright 2020 IBM Corporation
 
@@ -26,7 +28,6 @@ import (
 	"io/ioutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 	fakerest "k8s.io/client-go/rest/fake"
 	"net/http"
@@ -74,7 +75,9 @@ func TestGetTriggerInfo(t *testing.T) {
 						{
 							Id:     triggerID,
 							Sha256: triggerSHA256,
-							Url:    triggerURL,
+							Https:  v1alpha2.HttpsProtocolFile{
+								Url: triggerURL,
+							},
 						},
 					},
 				},
@@ -107,7 +110,7 @@ func TestGetTriggerInfo(t *testing.T) {
 
 	fakeClient := &fakerest.RESTClient{
 		Client:               fakerest.CreateHTTPClient(fakeReqHandler),
-		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: scheme.Codecs},
+		NegotiatedSerializer: scheme.Codecs.WithoutConversion(),
 		GroupVersion:         schema.GroupVersion{},
 		VersionedAPIPath:     "/apis/kabanero.io/v1alpha2",
 	}

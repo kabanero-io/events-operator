@@ -1864,7 +1864,7 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 
 	err = p.sendEventHandler(dest, buf, header)
 	if err != nil {
-		klog.Errorf("sendEvent unable to send event to destination $s: '%v'", dest, err)
+		klog.Errorf("sendEvent unable to send event to destination %s: '%v'", dest, err)
 		return types.ValOrErr(nil, "sendEventCEL: unable to send event: %v", err)
 	}
 

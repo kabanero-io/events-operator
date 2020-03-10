@@ -67,7 +67,7 @@ test:
 	go test ./...
 
 unit-tests:
-	@echo "Unit tests passed"
+	go test -v -tags=unit_test ./...
 
 e2e-tests:
 	@echo "e2e tests passed"
