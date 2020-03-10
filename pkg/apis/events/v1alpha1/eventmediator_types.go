@@ -46,7 +46,7 @@ type MediationsImpl struct {
 */
 type EventStatement struct {
     If    *string `json:"if,omitempty"`
-    Assign  *string `json:"=,omitempty",`
+    Assign  *string `json:"=,omitempty"`
     Switch  *[]EventStatement `json:"switch,omitempty"`
     Body *[]EventStatement `json:"body,omitempty"`
     Default *[]EventStatement `json:"default,omitempty"`
