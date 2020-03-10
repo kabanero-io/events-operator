@@ -458,7 +458,7 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
     klog.Infof("In processMessage message: %v, key: %v, url: %v, url path %v", message, key, url, url.Path)
     path := url.Path
     if strings.HasPrefix(path, "/") {
-        path = path[1:] 
+        path = path[1:]
     }
 
     mediator := env.EventMgr.GetMediator(key)
@@ -475,12 +475,14 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
     for _, mediationsImpl := range *mediator.Spec.Mediations {
          if  mediationsImpl.Mediation != nil {
               eventMediationImpl := mediationsImpl.Mediation
-              klog.Infof("Testing mediation %v", eventMediationImpl.Name)
               if eventMediationImpl.Name == path {
-                  klog.Info("mediation found")
                   /* process the message */
+                  klog.Infof("Processing mediation %v", path)
                   processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
                   _, err := processor.ProcessMessage(message, eventMediationImpl)
+                  if err != nil {
+                      klog.Errorf("Error processing mediation %v, error: %v", path, err)
+                  }
                   return err
                }
          }
@@ -524,10 +526,11 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
              /* TODO: add configurable timeout */
              if dest.Url != nil {
                  timeout, _ := time.ParseDuration("5s")
-                 klog.Infof("generateSendEventHandler: sending emssage to %v", dest.Url)
+                 klog.Infof("generateSendEventHandler: sending emssage to %v", *dest.Url)
                  err := sendMessage(*dest.Url, dest.Insecure, timeout,  buf, header)
                  if err != nil  {
                      /* TODO: better way to handle errors */
+                     klog.Errorf("generateSendEventHandler: error sending message: %v", err)
                      return err
                  }
              }

@@ -391,8 +391,8 @@ func (p *Processor) parseTrigger(trigger map[interface{}]interface{}) ([]string,
 
 // ProcessMessage processes an event message.
 func (p *Processor) ProcessMessage(message map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl) ([]map[string]interface{}, error) {
-    klog.Infof("Entering Processor.ProcessMessage. message: %v, mediation: %v", message, mediation)
-	defer klog.Infof("Leaving Processor.ProcessMessage")
+    klog.Infof("Entering Processor.ProcessMessage for mediation %v,message: %v", mediation.Name, mediation)
+	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
 	savedVariables := make([]map[string]interface{}, 0)
     env, variables, err := p.initializeCELEnv(message, mediation.Input, mediation.SendTo)
@@ -1864,11 +1864,11 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 
 	err = p.sendEventHandler(dest, buf, header)
 	if err != nil {
-		klog.Errorf("sendEvent unable to send event to destination $s: '%v'", dest, err)
+		klog.Errorf("sendEvent unable to send event to destination %v: '%v'", dest, err)
 		return types.ValOrErr(nil, "sendEventCEL: unable to send event: %v", err)
 	}
 
-    klog.Infof("sendEvent successfully sent message to destination '%s'", dest)
+    klog.Infof("sendEvent successfully sent message to destination '%v'", dest)
 	return types.String("")
 }
 

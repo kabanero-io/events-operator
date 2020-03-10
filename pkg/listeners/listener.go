@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"k8s.io/klog"
 	"net/http"
+	"net/url"
 	"os"
     "strconv"
     "sync"
@@ -45,11 +46,18 @@ type listenerInfo struct {
     key string
     handler eventenv.ListenerHandler
     env *eventenv.EventEnv
+    queue Queue
 }
 
 type ListenerManagerDefault struct {
     listeners map[int] *listenerInfo
     mutex sync.Mutex 
+}
+
+type queueElem struct {
+    message map[string]interface{}
+    url *url.URL
+    info *listenerInfo
 }
 
 func NewDefaultListenerManager() eventenv.ListenerManager {
@@ -67,7 +75,7 @@ func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, p
          return fmt.Errorf("Listener on port %v already exists", port)
     }
 
-	klog.Infof("Starting listener on port %v", port)
+	klog.Infof("Starting new listener on port %v", port)
 
 
     listener := &listenerInfo {
@@ -75,15 +83,43 @@ func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, p
         key: key,
         handler: handler,
         env: env,
+        queue: NewQueue(),
     }
-	err := http.ListenAndServe(":"+ strconv.Itoa(port), listenerHandler(listener))
-    if err != nil {
-         return err
-    }
+
+    /* start listener thread */
+    go func() {
+		klog.Infof("Listener thread started for port %v", port)
+	    err := http.ListenAndServe(":"+ strconv.Itoa(port), listenerHandler(listener))
+        if err != nil {
+		    klog.Errorf("Listener thread error for port %v, error: %v", port, err)
+        }
+		klog.Infof("Listener thread stopped for port %v", port)
+    } ()
+
+    /* STart a new thread to process the queue */
+    klog.Infof("Starting worker thread for listener on port %v", port)
+    go processQueueWorker(listener.queue)
 
     listenerMgr.listeners[port] = listener
 
-	return err
+	return nil
+}
+
+
+/* Process events on queue */
+func processQueueWorker(queue Queue) {
+    klog.Info("Worker thread started to process messages.\n")
+    for ; ; {
+         interf := queue.Dequeue()
+         qElem  := interf.(*queueElem)
+         klog.Infof("Worker thread processing url: %v, message: %v", qElem.url.String(), qElem.message)
+         err := (qElem.info.handler)(qElem.info.env, qElem.message, qElem.info.key, qElem.url)
+         if err != nil {
+             klog.Errorf("Worker thread error: url: %v, error: %v", qElem.url.String(), err)
+             return
+         }
+         klog.Infof("Worker thread completed processing url: %v", qElem.url.String())
+    }
 }
 
 
@@ -111,12 +147,21 @@ if _, err := os.Stat(tlsKeyPath); os.IsNotExist(err) {
         key: key,
         handler: handler,
         env: env,
+        queue: NewQueue(),
     }
 
-	err := http.ListenAndServeTLS(":"+strconv.Itoa(port), tlsCertPath, tlsKeyPath, listenerHandler(listener))
-    if err != nil {
-	   return err
-    }
+    /* start listener thread */
+    go func () {
+		klog.Infof("TLS Listener thread started for port %v", port)
+        err := http.ListenAndServeTLS(":"+strconv.Itoa(port), tlsCertPath, tlsKeyPath, listenerHandler(listener))
+        if err != nil {
+           klog.Infof("TLS Listener thread error for port %v, error: %v  ", port, err)
+        }
+		klog.Infof("TLS Listener thread ended for port %v", port)
+    }()
+
+    /* start worker thread */
+    go processQueueWorker(listener.queue)
 
     listenerMgr.listeners[port] = listener
     return nil
@@ -158,14 +203,13 @@ func listenerHandler(listener *listenerInfo) http.HandlerFunc {
 			return
 		}
 
-		err = (listener.handler)(listener.env, message, listener.key, req.URL)
-		if err != nil {
-			klog.Errorf("Error processing event: %v", err)
-			return
-		}
-		klog.Info("Completed event processing.\n")
+        listener.queue.Enqueue(&queueElem {
+             message : message,
+             url: req.URL,
+             info: listener,
+         })
 
-		writer.WriteHeader(http.StatusAccepted)
+		writer.WriteHeader(http.StatusOK)
 	}
 }
 
