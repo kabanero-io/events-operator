@@ -15,10 +15,10 @@ const (
 type  ListenerHandler func(env *EventEnv, message map[string]interface{}, key string, url *url.URL) error
 
 type ListenerManager interface {
-    /* Create a new TLS listener with TLS. Call the hndler on every emssage recevied*/
+    /* Create a new TLS listener with TLS. Call the handler on every message received */
     NewListenerTLS(env *EventEnv, port int, key string, tlsCertPath, tlsKeyPath string, handler ListenerHandler) error
 
-    /* reate a new listener. */
+    /* Create a new listener. */
     NewListener(env *EventEnv, port int, key string, handler ListenerHandler ) error
 }
 
