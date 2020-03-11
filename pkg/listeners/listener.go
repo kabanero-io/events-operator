@@ -53,7 +53,7 @@ type listenerInfo struct {
 }
 
 type ListenerManagerDefault struct {
-    listeners map[int] *listenerInfo
+    listeners map[int]*listenerInfo
     mutex sync.Mutex 
 }
 
@@ -70,41 +70,86 @@ func NewDefaultListenerManager() eventenv.ListenerManager {
 }
 
 // NewListener creates a new event listener on port 9080
+
 func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, port_int32 int32, key string, handler eventenv.ListenerHandler) error {
-    listenerMgr.mutex.Lock()
-    defer listenerMgr.mutex.Unlock()
-
-    port := int(port_int32)
-    if _, exists := listenerMgr.listeners[port] ; exists {
-         return fmt.Errorf("Listener on port %v already exists", port)
-    }
-
+	port := int(port_int32)
 	klog.Infof("Starting new listener on port %v", port)
 
+	listener := &listenerInfo {
+		port: port,
+		key: key,
+		handler: handler,
+		env: env,
+		queue: NewQueue(),
+	}
 
-    listener := &listenerInfo {
-        port: port,
-        key: key,
-        handler: handler,
-        env: env,
-        queue: NewQueue(),
-    }
+	if err := listenerMgr.addListener(port, listener); err != nil {
+		return err
+	}
 
-    /* start listener thread */
-    go func() {
+	/* start listener thread */
+	go func() {
 		klog.Infof("Listener thread started for port %v", port)
-	    err := http.ListenAndServe(":"+ strconv.Itoa(port), listenerHandler(listener))
-        if err != nil {
-		    klog.Errorf("Listener thread error for port %v, error: %v", port, err)
-        }
+		err := http.ListenAndServe(":"+ strconv.Itoa(port), listenerHandler(listener))
+		if err != nil {
+			klog.Errorf("Listener thread error for port %v, error: %v", port, err)
+		}
 		klog.Infof("Listener thread stopped for port %v", port)
-    } ()
+	} ()
 
-    /* STart a new thread to process the queue */
-    klog.Infof("Starting worker thread for listener on port %v", port)
-    go processQueueWorker(listener.queue)
+	/* Start a new thread to process the queue */
+	klog.Infof("Starting worker thread for listener on port %v", port)
+	go processQueueWorker(listener.queue)
 
-    listenerMgr.listeners[port] = listener
+	return nil
+}
+
+func (listenerMgr *ListenerManagerDefault ) NewListenerTLS(env *eventenv.EventEnv, port_int32 int32, key string, tlsCertPath, tlsKeyPath string, handler eventenv.ListenerHandler) error {
+	port := int(port_int32)
+	if tlsCertPath == "" {
+		tlsCertPath = DEFAULT_TLS_CERT_PATH
+	}
+
+	if tlsKeyPath == "" {
+		tlsKeyPath = DEFAULT_TLS_KEY_PATH
+	}
+
+	klog.Infof("Starting TLS listener on port %v", port)
+
+	if _, err := os.Stat(tlsCertPath); os.IsNotExist(err) {
+		klog.Fatalf("TLS certificate '%s' not found: %v", tlsCertPath, err)
+		return err
+	}
+	if _, err := os.Stat(tlsKeyPath); os.IsNotExist(err) {
+		klog.Fatalf("TLS private key '%s' not found: %v", tlsKeyPath, err)
+		return err
+	}
+
+	listener := &listenerInfo{
+		port: port,
+		key: key,
+		handler: handler,
+		env: env,
+		queue: NewQueue(),
+	}
+
+	if err := listenerMgr.addListener(port, listener); err != nil {
+		return err
+	}
+
+	/* start listener thread */
+	go func () {
+		klog.Infof("TLS Listener thread started for port %v", port)
+		err := http.ListenAndServeTLS(":"+strconv.Itoa(port), tlsCertPath, tlsKeyPath, listenerHandler(listener))
+		if err != nil {
+			klog.Infof("TLS Listener thread error for port %v, error: %v  ", port, err)
+		}
+		klog.Infof("TLS Listener thread ended for port %v", port)
+	}()
+
+	/* Start a new thread to process the queue */
+	klog.Infof("Starting worker thread for listener on port %v", port)
+	go processQueueWorker(listener.queue)
 
 	return nil
 }
@@ -112,74 +157,32 @@ func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, p
 
 /* Process events on queue */
 func processQueueWorker(queue Queue) {
-    klog.Info("Worker thread started to process messages.\n")
-    for ; ; {
-         interf := queue.Dequeue()
-         qElem  := interf.(*queueElem)
-         klog.Infof("Worker thread processing url: %v, message: %v", qElem.url.String(), qElem.message)
-         err := (qElem.info.handler)(qElem.info.env, qElem.message, qElem.info.key, qElem.url)
-         if err != nil {
-             klog.Errorf("Worker thread error: url: %v, error: %v", qElem.url.String(), err)
-             return
-         }
-         klog.Infof("Worker thread completed processing url: %v", qElem.url.String())
-    }
+	klog.Info("Worker thread started to process messages.")
+	for {
+		interf := queue.Dequeue()
+		qElem  := interf.(*queueElem)
+		klog.Infof("Worker thread processing url: %v, message: %v", qElem.url.String(), qElem.message)
+		err := (qElem.info.handler)(qElem.info.env, qElem.message, qElem.info.key, qElem.url)
+		if err != nil {
+			klog.Errorf("Worker thread error: url: %v, error: %v", qElem.url.String(), err)
+			return
+		}
+		klog.Infof("Worker thread completed processing url: %v", qElem.url.String())
+	}
 }
 
 
-func (listenerMgr *ListenerManagerDefault ) NewListenerTLS(env *eventenv.EventEnv, port_int32 int32, key string, tlsCertPath, tlsKeyPath string, handler eventenv.ListenerHandler) error {
-    listenerMgr.mutex.Lock()
-    defer listenerMgr.mutex.Unlock()
+func (listenerMgr *ListenerManagerDefault) addListener(port int, listener *listenerInfo) error {
+	listenerMgr.mutex.Lock()
+	defer listenerMgr.mutex.Unlock()
 
-    port := int(port_int32)
-    if tlsCertPath == ""{
-        tlsCertPath = DEFAULT_TLS_CERT_PATH
-    }
-
-    if tlsKeyPath == "" {
-        tlsKeyPath = DEFAULT_TLS_KEY_PATH
-    }
-
-    if _, exists := listenerMgr.listeners[port] ; exists {
-         return fmt.Errorf("Listener on port %v already exists", port)
-    }
-
-	klog.Infof("Starting TLS listener on port %v", port)
-	if _, err := os.Stat(tlsCertPath); os.IsNotExist(err) {
-		klog.Fatalf("TLS certificate '%s' not found: %v", tlsCertPath, err)
-		return err
-	}
-if _, err := os.Stat(tlsKeyPath); os.IsNotExist(err) {
-		klog.Fatalf("TLS private key '%s' not found: %v", tlsKeyPath, err)
-		return err
+	if _, exists := listenerMgr.listeners[port]; exists {
+		return fmt.Errorf("listener on port %v already exists", port)
 	}
 
-
-    listener := &listenerInfo {
-        port: port,
-        key: key,
-        handler: handler,
-        env: env,
-        queue: NewQueue(),
-    }
-
-    /* start listener thread */
-    go func () {
-		klog.Infof("TLS Listener thread started for port %v", port)
-        err := http.ListenAndServeTLS(":"+strconv.Itoa(port), tlsCertPath, tlsKeyPath, listenerHandler(listener))
-        if err != nil {
-           klog.Infof("TLS Listener thread error for port %v, error: %v  ", port, err)
-        }
-		klog.Infof("TLS Listener thread ended for port %v", port)
-    }()
-
-    /* start worker thread */
-    go processQueueWorker(listener.queue)
-
-    listenerMgr.listeners[port] = listener
-    return nil
+	listenerMgr.listeners[port] = listener
+	return nil
 }
-
 
 
 /* Event listener */
@@ -189,38 +192,37 @@ func listenerHandler(listener *listenerInfo) http.HandlerFunc {
 		header := req.Header
 		klog.Infof("Received request. Header: %v", header)
 
-		var body = req.Body
-
-		defer body.Close()
-		bytes, err := ioutil.ReadAll(body)
-		if err != nil {
-			klog.Errorf("listener can not read body. Error: %v", err)
-		} else {
-			klog.Infof("listener received body: %v", string(bytes))
-		}
-
 		var bodyMap map[string]interface{}
-		err = json.Unmarshal(bytes, &bodyMap)
-		if err != nil {
-			klog.Errorf("Unable to unmarshal json body: %v", err)
-			return
+
+		if req.Body != nil {
+			defer req.Body.Close()
+			bytes, err := ioutil.ReadAll(req.Body)
+			if err != nil {
+				klog.Errorf("Listener can not read body. Error: %v", err)
+				writer.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			klog.Infof("Listener received body: %v", string(bytes))
+			err = json.Unmarshal(bytes, &bodyMap)
+			if err != nil {
+				klog.Errorf("Unable to unmarshal json body: %v", err)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		} else {
+			klog.Info("Request did not have a body")
 		}
 
 		message := make(map[string]interface{})
 		message[HEADER] = map[string][]string(header)
 		message[BODY] = bodyMap
 
-		bytes, err = json.Marshal(message)
-		if err != nil {
-			klog.Errorf("Unable to marshall as JSON: %v, type %T", message, message)
-			return
-		}
-
-        listener.queue.Enqueue(&queueElem {
-             message : message,
-             url: req.URL,
-             info: listener,
-         })
+		listener.queue.Enqueue(&queueElem {
+			message : message,
+			url: req.URL,
+			info: listener,
+		})
 
 		writer.WriteHeader(http.StatusOK)
 	}
