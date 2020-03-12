@@ -38,6 +38,9 @@ const (
 	WEBHOOKDESTINATION = "github"
 
     DEFAULT_PORT = 9443
+
+    DEFAULT_TLS_CERT_PATH = "/etc/tls/tls.crt"
+    DEFAULT_TLS_KEY_PATH= "/etc/tls/tls.key"
 )
 
 
@@ -67,10 +70,11 @@ func NewDefaultListenerManager() eventenv.ListenerManager {
 }
 
 // NewListener creates a new event listener on port 9080
-func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, port int, key string, handler eventenv.ListenerHandler) error {
+func (listenerMgr *ListenerManagerDefault) NewListener(env *eventenv.EventEnv, port_int32 int32, key string, handler eventenv.ListenerHandler) error {
     listenerMgr.mutex.Lock()
     defer listenerMgr.mutex.Unlock()
 
+    port := int(port_int32)
     if _, exists := listenerMgr.listeners[port] ; exists {
          return fmt.Errorf("Listener on port %v already exists", port)
     }
@@ -123,9 +127,18 @@ func processQueueWorker(queue Queue) {
 }
 
 
-func (listenerMgr *ListenerManagerDefault ) NewListenerTLS(env *eventenv.EventEnv, port int, key string, tlsCertPath, tlsKeyPath string, handler eventenv.ListenerHandler) error {
+func (listenerMgr *ListenerManagerDefault ) NewListenerTLS(env *eventenv.EventEnv, port_int32 int32, key string, tlsCertPath, tlsKeyPath string, handler eventenv.ListenerHandler) error {
     listenerMgr.mutex.Lock()
     defer listenerMgr.mutex.Unlock()
+
+    port := int(port_int32)
+    if tlsCertPath == ""{
+        tlsCertPath = DEFAULT_TLS_CERT_PATH
+    }
+
+    if tlsKeyPath == "" {
+        tlsKeyPath = DEFAULT_TLS_KEY_PATH
+    }
 
     if _, exists := listenerMgr.listeners[port] ; exists {
          return fmt.Errorf("Listener on port %v already exists", port)

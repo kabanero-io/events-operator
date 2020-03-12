@@ -7,7 +7,9 @@ spec:
     - from:
         group: events.kabanero.io
         kind: EventMediator
-        name: example1
+        name: webhook
         id: webhook 
       to:
-        - url: http://example1:9443/mediation1
+        - https:
+            - url: https://mediator1/mediation1
+              insecure: true
