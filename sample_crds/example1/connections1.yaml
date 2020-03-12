@@ -13,3 +13,5 @@ spec:
         - https:
             - url: https://mediator1/mediation1
               insecure: true
+            - url: https://mediator2/mediation1
+              insecure: true
