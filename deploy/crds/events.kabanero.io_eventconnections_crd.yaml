@@ -57,10 +57,17 @@ spec:
                   to:
                     items:
                       properties:
-                        insecure:
-                          type: boolean
-                        url:
-                          type: string
+                        https:
+                          items:
+                            properties:
+                              insecure:
+                                type: boolean
+                              url:
+                                type: string
+                            required:
+                            - url
+                            type: object
+                          type: array
                       type: object
                     type: array
                 required:

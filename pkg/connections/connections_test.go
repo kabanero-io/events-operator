@@ -39,7 +39,11 @@ func TestConnectionsManager(t *testing.T) {
 							},
 							To: []v1alpha1.EventDestinationEndpoint{
 								{
-									Url: &ghUrl,
+                                    Https: &[]v1alpha1.HttpsEndpoint {
+                                        {
+									       Url: ghUrl,
+                                        },
+                                    },
 								},
 							},
 						},
@@ -51,7 +55,11 @@ func TestConnectionsManager(t *testing.T) {
 							},
 							To: []v1alpha1.EventDestinationEndpoint{
 								{
-									Url: &dockerUrl,
+                                    Https: &[]v1alpha1.HttpsEndpoint {
+                                        {
+									       Url: dockerUrl,
+                                        },
+                                    },
 								},
 							},
 						},
@@ -77,11 +85,19 @@ func TestConnectionsManager(t *testing.T) {
 							},
 							To: []v1alpha1.EventDestinationEndpoint{
 								{
-									Url: &svcUrl1,
+                                    Https: &[]v1alpha1.HttpsEndpoint {
+                                        {
+									       Url: svcUrl1,
+                                        },
+                                    },
 								},
 								{
-									Url: &svcUrl2,
-									Insecure: true,
+                                    Https: &[]v1alpha1.HttpsEndpoint {
+                                        {
+									       Url: svcUrl2,
+                                           Insecure: true,
+                                        },
+                                    },
 								},
 							},
 						},

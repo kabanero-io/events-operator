@@ -31,17 +31,17 @@ spec:
         spec:
           description: EventMediatorSpec defines the desired state of EventMediator
           properties:
-            listener:
+            createListener:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "operator-sdk generate k8s" to regenerate code after
                 modifying this file Add custom validation using kubebuilder tags:
                 https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
-              properties:
-                createRoute:
-                  type: boolean
-                httpsPort:
-                  type: integer
-              type: object
+              type: boolean
+            createRoute:
+              type: boolean
+            listenerPort:
+              format: int32
+              type: integer
             mediations:
               description: ImportMediations  *[]string `json:"importMediations,omitempty"`
                 // default is to import everything unless code is specified

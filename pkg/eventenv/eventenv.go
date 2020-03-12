@@ -16,10 +16,10 @@ type  ListenerHandler func(env *EventEnv, message map[string]interface{}, key st
 
 type ListenerManager interface {
     /* Create a new TLS listener with TLS. Call the handler on every message received */
-    NewListenerTLS(env *EventEnv, port int, key string, tlsCertPath, tlsKeyPath string, handler ListenerHandler) error
+    NewListenerTLS(env *EventEnv, port int32, key string, tlsCertPath, tlsKeyPath string, handler ListenerHandler) error
 
     /* Create a new listener. */
-    NewListener(env *EventEnv, port int, key string, handler ListenerHandler ) error
+    NewListener(env *EventEnv, port int32, key string, handler ListenerHandler ) error
 }
 
 type EventEnv  struct {

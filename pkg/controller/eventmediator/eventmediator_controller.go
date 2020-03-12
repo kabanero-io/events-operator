@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+    "k8s.io/apimachinery/pkg/util/intstr"
     logf "sigs.k8s.io/controller-runtime/pkg/log"
     "github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -152,19 +153,14 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
             env := eventenv.GetEventEnv()
             env.EventMgr.AddEventMediator(instance)
 
-            listenerConfig := instance.Spec.Listener
-            if listenerConfig != nil {
-                port :=  listenerConfig.HttpsPort
-                reqLogger.Info(fmt.Sprintf("port is %v, default port is %v", port, eventsv1alpha1.DEFAULT_HTTPS_PORT))
-                if port == 0 {
-                     port = eventsv1alpha1.DEFAULT_HTTPS_PORT
-                }
+            if instance.Spec.CreateListener {
+                port :=  getListenerPort(instance)
                 key := eventsv1alpha1.MediatorHashKey(instance)
-                err = env.ListenerMgr.NewListener(env, port, key, processMessage)
+                err = env.ListenerMgr.NewListenerTLS(env, port, key, "", "", processMessage)
                 if err != nil {
                      return reconcile.Result{}, err
                 }
-             }
+            }
         }
     }
 
@@ -251,18 +247,26 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
     err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, service)
     if err != nil && errors.IsNotFound(err) {
         // Define a new service
-        service = r.serviceForEventMediator(instance, reqLogger)
-        reqLogger.Info("Creating a new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
-        err = r.client.Create(context.TODO(), service)
-        if err != nil {
-            reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
-            return reconcile.Result{}, err
+        if instance.Spec.CreateListener {
+            service = r.serviceForEventMediator(instance, reqLogger)
+            reqLogger.Info("Creating a new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
+            err = r.client.Create(context.TODO(), service)
+            if err != nil {
+                reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
+                return reconcile.Result{}, err
+            }
+            // Servicecreated successfully - return and requeue
+            return reconcile.Result{Requeue: true}, nil
+        } else {
+            return reconcile.Result{}, nil
         }
-        // Servicecreated successfully - return and requeue
-        return reconcile.Result{Requeue: true}, nil
     } else if err != nil {
         reqLogger.Error(err, "Failed to get Service")
         return reconcile.Result{}, err
+    }
+
+    if !instance.Spec.CreateListener{
+         /* TODO: delete service */
     }
 
     if portChangedForService(service, instance)  {
@@ -282,7 +286,6 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
 func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1alpha1.EventMediator) bool {
 
     ports := deployment.Spec.Template.Spec.Containers[0].Ports
-    listener := mediator.Spec.Listener
 
     check := make(map[int32] int32)
     for _, portInfo := range ports {
@@ -290,13 +293,10 @@ func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1a
     }
 
     numMediatorPorts := 0
-    if listener != nil {
-       if listener.HttpsPort != 0 {
-           numMediatorPorts++
-           if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
-               return true
-           }
-        }
+    port := getListenerPort(mediator)
+    numMediatorPorts++
+    if   _, exists:= check[port]; ! exists {
+        return true
     }
     if len(ports) != numMediatorPorts {
          return true
@@ -307,17 +307,11 @@ func portChangedForDeployment(deployment *appsv1.Deployment, mediator *eventsv1a
 
 func generateDeploymentPorts(mediator *eventsv1alpha1.EventMediator) []corev1.ContainerPort {
     var ports []corev1.ContainerPort = make([]corev1.ContainerPort, 0);
-    if mediator.Spec.Listener != nil {
-        listener := mediator.Spec.Listener
-        var port int32
-        if listener.HttpsPort != 0 {
-             port = int32(listener.HttpsPort)
-             ports = append(ports, corev1.ContainerPort {
-                    ContainerPort:  port,
-                    Name:          "port",
-               } )
-        }
-    }
+    port := int32(getListenerPort(mediator))
+    ports = append(ports, corev1.ContainerPort {
+           ContainerPort:  port,
+           Name:          "port",
+      } )
     return ports
 }
 
@@ -364,13 +358,31 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
                 },
                 Spec: corev1.PodSpec{
                     ServiceAccountName: operatorServiceAccount,
-                    Containers: []corev1.Container{{
+                    Containers: []corev1.Container{
+                      {
                         Image:   imageName,
                         Name:    "evnetmediator",
                         Command: []string{"entrypoint"},
                         Ports: ports,
                         Env: env,
-                      }},
+                        VolumeMounts: []corev1.VolumeMount {
+                             {
+                             Name: "listener-certificates",
+                             ReadOnly: true,
+                             MountPath: "/etc/tls",
+                             },
+                        },
+                    }},
+                    Volumes: []corev1.Volume {
+                      {
+                          Name: "listener-certificates",
+                          VolumeSource: corev1.VolumeSource {
+                              Secret: &corev1.SecretVolumeSource{
+                                  SecretName: mediator.Name,
+                              },
+                          },
+                      },
+                    },
                 },
             },
         },
@@ -385,21 +397,25 @@ func labelsForEventMediator(name string) map[string]string {
     return map[string]string{"app": name, "eventmediator_cr": name}
 }
 
-func generateServicePorts(mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) []corev1.ServicePort {
-
-    ports := make([]corev1.ServicePort, 0)
-    if mediator.Spec.Listener != nil {
-        reqLogger.Info("mediator.Spec.Listener not nil")
-        listener := mediator.Spec.Listener
-        var port int32
-        if listener.HttpsPort != 0 {
-             reqLogger.Info("https port not 0")
-             port = int32(listener.HttpsPort)
-             ports = append(ports, corev1.ServicePort {
-                    Port:  port,
-               } )
+/* Get port in listener config. If port == 0, return default port. */
+func getListenerPort(mediator *eventsv1alpha1.EventMediator) int32 {
+    port := int32(0)
+    if mediator != nil {
+        port = mediator.Spec.ListenerPort
+        if port == int32(0) {
+            port = eventsv1alpha1.DEFAULT_HTTPS_PORT
         }
     }
+    return port
+}
+
+func generateServicePorts(mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) []corev1.ServicePort {
+    ports := make([]corev1.ServicePort, 0)
+    port := getListenerPort(mediator)
+    ports = append(ports, corev1.ServicePort {
+           Port:  int32(443),
+           TargetPort: intstr.IntOrString { IntVal: port } ,
+       } )
     return ports
 }
 
@@ -414,6 +430,9 @@ func (r *ReconcileEventMediator) serviceForEventMediator(mediator *eventsv1alpha
         ObjectMeta: metav1.ObjectMeta{
             Name:      mediator.Name,
             Namespace: mediator.Namespace,
+            Annotations: map[string]string {
+                 "service.beta.openshift.io/serving-cert-secret-name": mediator.Name,
+            },
         },
         Spec: corev1.ServiceSpec {
             Ports: servicePorts,
@@ -431,22 +450,17 @@ func (r *ReconcileEventMediator) serviceForEventMediator(mediator *eventsv1alpha
 func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.EventMediator) bool {
 
     ports := service.Spec.Ports
-    listener := mediator.Spec.Listener
 
     check := make(map[int32] int32)
     for _, portInfo := range ports {
         check[portInfo.Port] = portInfo.Port
     }
 
-    numMediatorPorts := 0
-    if listener != nil {
-       if listener.HttpsPort != 0 {
-           numMediatorPorts++
-           if   _, exists:= check[int32(listener.HttpsPort)]; ! exists {
-               return true
-           }
-        }
-    }
+   port := getListenerPort(mediator)
+   numMediatorPorts:= 1
+   if   _, exists:= check[port]; ! exists {
+       return true
+   }
     if len(ports) != numMediatorPorts {
          return true
     }
@@ -524,15 +538,17 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
          destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
          for _, dest := range destinations {
              /* TODO: add configurable timeout */
-             if dest.Url != nil {
-                 timeout, _ := time.ParseDuration("5s")
-                 klog.Infof("generateSendEventHandler: sending emssage to %v", *dest.Url)
-                 err := sendMessage(*dest.Url, dest.Insecure, timeout,  buf, header)
-                 if err != nil  {
-                     /* TODO: better way to handle errors */
-                     klog.Errorf("generateSendEventHandler: error sending message: %v", err)
-                     return err
-                 }
+             if dest.Https != nil {
+                 for _, https := range *dest.Https {
+                     timeout, _ := time.ParseDuration("5s")
+                     klog.Infof("generateSendEventHandler: sending emssage to %v", https.Url)
+                     err := sendMessage(https.Url, https.Insecure, timeout,  buf, header)
+                     if err != nil  {
+                         /* TODO: better way to handle errors */
+                         klog.Errorf("generateSendEventHandler: error sending message: %v", err)
+                         return err
+                     }
+                }
              }
          }
          return nil
@@ -596,6 +612,9 @@ func (r *ReconcileEventMediator) routeForEventMediator(mediator *eventsv1alpha1.
                  Kind: "Service",
                  Name: mediator.Name,
             },
+            TLS: &routev1.TLSConfig {
+                 Termination: routev1.TLSTerminationPassthrough,
+            }, 
         },
     }
 
@@ -607,7 +626,7 @@ func (r *ReconcileEventMediator) routeForEventMediator(mediator *eventsv1alpha1.
 /* reconcile Operator */
 func (r *ReconcileEventMediator) reconcileRoute(request reconcile.Request, instance *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
     reqLogger.Info("In reconcileRoute")
-    if instance.Spec.Listener == nil || !instance.Spec.Listener.CreateRoute {
+    if !instance.Spec.CreateListener  || !instance.Spec.CreateRoute {
         return reconcile.Result{}, nil
     }
     route := &routev1.Route{}

@@ -32,7 +32,11 @@ type EventEndpoint struct {
 }
 
 type EventDestinationEndpoint struct {
-    Url *string `json:"url,omitempty"`
+    Https *[]HttpsEndpoint `json:"https,omitempty"`
+}
+
+type HttpsEndpoint  struct {
+    Url string `json:"url"`
     Insecure bool `json:"insecure,omitempty"`
 }
 

@@ -23,10 +23,8 @@ func TestEventManager(t *testing.T) {
 			Name: "event-mediator-1",
 		},
 		Spec: v1alpha1.EventMediatorSpec{
-			Listener: &v1alpha1.EventListenerConfig{
-				HttpsPort: 9443,
-				CreateRoute: true,
-			},
+			ListenerPort: 9443,
+			CreateRoute: true,
 			Mediations: &[]v1alpha1.MediationsImpl{
 				{
 					Mediation: &v1alpha1.EventMediationImpl{
