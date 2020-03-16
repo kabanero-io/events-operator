@@ -553,14 +553,14 @@ func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator
 
 func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.EventMediator, mediationName string) func(dest string, buf []byte, header map[string][]string) error {
 
-    return func(dest string, buf[]byte, header map[string][]string) error {
+    return func(destination string, buf[]byte, header map[string][]string) error {
         connectionsMgr  := env.ConnectionsMgr
-        gvk := mediator.TypeMeta.GroupVersionKind()
-        endpoint := &eventsv1alpha1.EventEndpoint {
-             Group:  gvk.Group,
-             Kind: gvk.Kind,
-             Name: mediator.ObjectMeta.Name,
-             Id:  mediationName,
+        endpoint := &eventsv1alpha1.EventSourceEndpoint {
+             Mediator: &eventsv1alpha1.EventMediatorSourceEndpoint {
+                 Name: mediator.ObjectMeta.Name,
+                 Mediation: mediationName,
+                 Destination:  destination,
+             },
          }
          destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
          for _, dest := range destinations {

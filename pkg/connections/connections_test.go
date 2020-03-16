@@ -18,6 +18,10 @@ func TestConnectionsManager(t *testing.T) {
 	svcUrl1 := "https://service1"
 	svcUrl2 := "https://service2"
 
+    githubDest := "githubDest"
+    dockerDest := "dockerDest"
+    dest := "dest"
+
 	eventConnections := v1alpha1.EventConnectionsList{
 		Items: []v1alpha1.EventConnections{
 			{
@@ -32,10 +36,12 @@ func TestConnectionsManager(t *testing.T) {
 				Spec: v1alpha1.EventConnectionsSpec{
 					Connections: []v1alpha1.EventConnection{
 						{
-							From: v1alpha1.EventEndpoint{
-								Kind: "EventMediator",
-								Name: "switchboard-mediator-1",
-								Id: "webhook-switchboard/githubDest",
+							From: v1alpha1.EventSourceEndpoint{
+                                &v1alpha1.EventMediatorSourceEndpoint {
+								    Name: "switchboard-mediator-1",
+                                    Mediation: "webhook-switchboard",
+								    Destination: githubDest,
+                                 },
 							},
 							To: []v1alpha1.EventDestinationEndpoint{
 								{
@@ -48,10 +54,12 @@ func TestConnectionsManager(t *testing.T) {
 							},
 						},
 						{
-							From: v1alpha1.EventEndpoint{
-								Kind: "EventMediator",
-								Name: "switchboard-mediator-1",
-								Id: "webhook-switchboard/dockerDest",
+							From: v1alpha1.EventSourceEndpoint{
+                                &v1alpha1.EventMediatorSourceEndpoint {
+								    Name: "switchboard-mediator-1",
+								    Mediation: "webhook-switchboard",
+                                    Destination: dockerDest,
+                                },
 							},
 							To: []v1alpha1.EventDestinationEndpoint{
 								{
@@ -78,10 +86,12 @@ func TestConnectionsManager(t *testing.T) {
 				Spec: v1alpha1.EventConnectionsSpec{
 					Connections: []v1alpha1.EventConnection{
 						{
-							From: v1alpha1.EventEndpoint{
-								Kind: "EventMediator",
-								Name: "switchboard-mediator-2",
-								Id: "webhook-switchboard/dest",
+							From: v1alpha1.EventSourceEndpoint{
+                                Mediator: &v1alpha1.EventMediatorSourceEndpoint {
+								    Name: "switchboard-mediator-2",
+								    Mediation : "webhook-switchboard",
+								    Destination: dest,
+                                },
 							},
 							To: []v1alpha1.EventDestinationEndpoint{
 								{

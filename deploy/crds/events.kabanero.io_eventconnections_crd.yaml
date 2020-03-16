@@ -42,17 +42,17 @@ spec:
                 properties:
                   from:
                     properties:
-                      group:
-                        type: string
-                      id:
-                        type: string
-                      kind:
-                        type: string
-                      name:
-                        type: string
-                    required:
-                    - kind
-                    - name
+                      mediator:
+                        properties:
+                          destination:
+                            type: string
+                          mediation:
+                            type: string
+                          name:
+                            type: string
+                        required:
+                        - name
+                        type: object
                     type: object
                   to:
                     items:

@@ -4,11 +4,11 @@ metadata:
   name: example1
 spec:
   connections:
-    - from:
-        group: events.kabanero.io
-        kind: EventMediator
-        name: webhook
-        id: webhook 
+    - from: 
+        mediator:
+            name: webhook
+            mediation: webhook
+            destination: dest
       to:
         - https:
             - url: https://mediator1/mediation1
