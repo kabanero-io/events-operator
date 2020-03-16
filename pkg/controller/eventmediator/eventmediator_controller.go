@@ -24,6 +24,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
     "github.com/operator-framework/operator-sdk/pkg/k8sutil"
+    "sigs.k8s.io/controller-runtime/pkg/predicate"
+    "sigs.k8s.io/controller-runtime/pkg/event"
 
     "k8s.io/klog"
     // "os"
@@ -63,8 +65,25 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+
+    controllerPredicate := predicate.Funcs{
+        UpdateFunc: func(e event.UpdateEvent) bool {
+            // Ignore status updates
+            return e.MetaOld.GetGeneration() != e.MetaNew.GetGeneration() 
+        },
+        CreateFunc: func(e event.CreateEvent) bool {
+            return true
+        },
+        DeleteFunc: func(e event.DeleteEvent) bool {
+            return true
+        },
+        GenericFunc: func(e event.GenericEvent) bool {
+            return true
+        },
+    }
+
 	// Watch for changes to primary resource EventMediator
-	err = c.Watch(&source.Kind{Type: &eventsv1alpha1.EventMediator{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &eventsv1alpha1.EventMediator{}}, &handler.EnqueueRequestForObject{}, controllerPredicate)
 	if err != nil {
 		return err
 	}
@@ -118,7 +137,7 @@ type ReconcileEventMediator struct {
 
 // Reconcile reads that state of the cluster for a EventMediator object and makes changes based on the state read
 // and what is in the EventMediator.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
+// (user): Modify this Reconcile function to implement your Controller logic.  This example creates
 // a Pod as an example
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
@@ -149,7 +168,7 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
     } else {
         /* plain controller for one mediator */
         if instance.ObjectMeta.Name ==  env.MediatorName {
-            /* TODO: We should handle this */
+            /*  We should handle this */
             env := eventenv.GetEventEnv()
             env.EventMgr.AddEventMediator(instance)
 
@@ -169,7 +188,6 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 
 /* Reconcile deployment for an operator */
 func (r *ReconcileEventMediator) reconcileOperator(request reconcile.Request, mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
-    /* TODO: error checking: what if only subset works? */
     reqLogger.Info("In reconcileOperator")
     result, err := r.reconcileDeployment(request, mediator, reqLogger)
     if err != nil {
@@ -220,12 +238,13 @@ func (r *ReconcileEventMediator) reconcileDeployment(request reconcile.Request, 
             return reconcile.Result{}, err
         }
         // Deployment created successfully - return and requeue
-        return reconcile.Result{Requeue: true}, nil
+        return reconcile.Result{}, nil
     } else if err != nil {
         reqLogger.Error(err, "Failed to get Deployment")
         return reconcile.Result{}, err
     }
 
+    /* Check if deployment should be changed */
     if portChangedForDeployment(deployment, instance)  {
         deployment.Spec.Template.Spec.Containers[0].Ports = generateDeploymentPorts(instance)
         err = r.client.Update(context.TODO(), deployment)
@@ -234,7 +253,7 @@ func (r *ReconcileEventMediator) reconcileDeployment(request reconcile.Request, 
             return reconcile.Result{}, err
          }
         // Spec updated - return and requeue
-        return reconcile.Result{Requeue: true}, nil
+        return reconcile.Result{}, nil
     }
 
     return reconcile.Result{}, nil
@@ -256,7 +275,7 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
                 return reconcile.Result{}, err
             }
             // Servicecreated successfully - return and requeue
-            return reconcile.Result{Requeue: true}, nil
+            return reconcile.Result{}, nil
         } else {
             return reconcile.Result{}, nil
         }
@@ -265,10 +284,18 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
         return reconcile.Result{}, err
     }
 
-    if !instance.Spec.CreateListener{
-         /* TODO: delete service */
+    if !instance.Spec.CreateListener {
+         /* delete service. */
+        err = r.client.Delete(context.Background(), service)
+        if err != nil {
+           reqLogger.Error(err, "Failed to delete service", "Service.Namespace", instance.Namespace, "Service.Name", instance.Name)
+            return  reconcile.Result{}, nil
+        }
+        reqLogger.Info("Deleted service", "Service.Namespace", instance.Namespace, "Service.Name", instance.Name)
+        return  reconcile.Result{}, nil
     }
 
+    /* Check if service should be changed */
     if portChangedForService(service, instance)  {
         service.Spec.Ports = generateServicePorts(instance, reqLogger)
         err = r.client.Update(context.TODO(), service)
@@ -277,7 +304,7 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
             return reconcile.Result{}, err
          }
         // Spec updated - return and requeue
-        return reconcile.Result{Requeue: true}, nil
+        return reconcile.Result{}, nil
     }
     return reconcile.Result{}, nil
 }
@@ -526,14 +553,14 @@ func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator
 
 func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.EventMediator, mediationName string) func(dest string, buf []byte, header map[string][]string) error {
 
-    return func(dest string, buf[]byte, header map[string][]string) error {
+    return func(destination string, buf[]byte, header map[string][]string) error {
         connectionsMgr  := env.ConnectionsMgr
-        gvk := mediator.TypeMeta.GroupVersionKind()
-        endpoint := &eventsv1alpha1.EventEndpoint {
-             Group:  gvk.Group,
-             Kind: gvk.Kind,
-             Name: mediator.ObjectMeta.Name,
-             Id:  mediationName,
+        endpoint := &eventsv1alpha1.EventSourceEndpoint {
+             Mediator: &eventsv1alpha1.EventMediatorSourceEndpoint {
+                 Name: mediator.ObjectMeta.Name,
+                 Mediation: mediationName,
+                 Destination:  destination,
+             },
          }
          destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
          for _, dest := range destinations {
@@ -614,7 +641,7 @@ func (r *ReconcileEventMediator) routeForEventMediator(mediator *eventsv1alpha1.
             },
             TLS: &routev1.TLSConfig {
                  Termination: routev1.TLSTerminationPassthrough,
-            }, 
+            },
         },
     }
 
@@ -626,27 +653,39 @@ func (r *ReconcileEventMediator) routeForEventMediator(mediator *eventsv1alpha1.
 /* reconcile Operator */
 func (r *ReconcileEventMediator) reconcileRoute(request reconcile.Request, instance *eventsv1alpha1.EventMediator, reqLogger logr.Logger) (reconcile.Result, error) {
     reqLogger.Info("In reconcileRoute")
-    if !instance.Spec.CreateListener  || !instance.Spec.CreateRoute {
-        return reconcile.Result{}, nil
-    }
     route := &routev1.Route{}
     err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, route)
     if err != nil && errors.IsNotFound(err) {
-        // Define a new Route
-        route = r.routeForEventMediator(instance, reqLogger)
-        reqLogger.Info("Creating a new Route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
-        err = r.client.Create(context.TODO(), route)
-        if err != nil {
-            reqLogger.Error(err, "Failed to create new route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
-            return reconcile.Result{}, err
-        }
-        // Servicecreated successfully - return and requeue
-        return reconcile.Result{Requeue: true}, nil
+        if instance.Spec.CreateListener  && instance.Spec.CreateRoute {
+            // Define a new Route
+            route = r.routeForEventMediator(instance, reqLogger)
+            reqLogger.Info("Creating a new Route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+            err = r.client.Create(context.TODO(), route)
+            if err != nil {
+                reqLogger.Error(err, "Failed to create new route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+                return reconcile.Result{}, err
+            }
+            // route successfully - return and requeue
+            reqLogger.Info("New Route created. ", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+            return reconcile.Result{}, nil
+          }
+          return reconcile.Result{}, nil
     } else if err != nil {
         reqLogger.Error(err, "Failed to get Route")
         return reconcile.Result{}, err
     }
 
+    if !instance.Spec.CreateListener  || !instance.Spec.CreateRoute {
+        /* delete route */
+       err  = r.client.Delete(context.Background(), route)
+       if err != nil {
+           reqLogger.Error(err, "Failed to delete route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+           return reconcile.Result{}, err
+       } else {
+           reqLogger.Info("Deleted Route ", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+           return reconcile.Result{}, nil
+       }
+    }
 /*
     if portChangedForRoute(route, instance)  {
         route.Spec.Ports = generateRoutePorts(instance, reqLogger)

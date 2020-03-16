@@ -1,0 +1,13 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: mediator2
+spec:
+  createListener: true
+  mediations:
+    - mediation:
+        name:  mediation1
+        input: message
+        sendTo: [ "dest"  ]
+        body:
+          - = : 'sendEvent(dest, message.body, message.header)'

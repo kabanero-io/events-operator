@@ -19,16 +19,19 @@ type EventConnectionsSpec struct {
    from sender to receivers
 */
 type EventConnection struct {
-    From EventEndpoint `json:"from"`
+    From EventSourceEndpoint `json:"from"`
     To  []EventDestinationEndpoint  `json:"to"`
 }
 
 
-type EventEndpoint struct {
-    Group string `json:"group,omitempty"`
-    Kind  string `json:"kind"`
+type EventSourceEndpoint struct {
+    Mediator  *EventMediatorSourceEndpoint  `json:"mediator,omitempty"`
+}
+
+type EventMediatorSourceEndpoint struct {
     Name  string `json:"name"`
-    Id    string `json:"id,omitempty"` // Identifier of the endpoint
+    Mediation string `json:"mediation,omitempty"` // Identifier of the endpoint
+    Destination string `json:"destination,omitempty"` 
 }
 
 type EventDestinationEndpoint struct {

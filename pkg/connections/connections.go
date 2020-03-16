@@ -2,6 +2,7 @@ package connections
 
 import (
     eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+    "k8s.io/klog"
     "sync"
 )
 
@@ -39,16 +40,23 @@ func (connectionsMgr *ConnectionsManager) RemoveConnections(connections *eventsv
 }
 
 /* Lookup destination endpoints for an actual endpoint */
-func (connectionsMgr *ConnectionsManager) LookupDestinationEndpoints(endpoint *eventsv1alpha1.EventEndpoint) []eventsv1alpha1.EventDestinationEndpoint {
+func (connectionsMgr *ConnectionsManager) LookupDestinationEndpoints(endpoint *eventsv1alpha1.EventSourceEndpoint) []eventsv1alpha1.EventDestinationEndpoint {
     connectionsMgr.mutex.Lock()
     defer connectionsMgr.mutex.Unlock()
 
+    if endpoint.Mediator != nil {
+        klog.Infof("LookupDestnationEndpoins for name: %v, mediation: %v, destination: %v", endpoint.Mediator.Name, endpoint.Mediator.Mediation, endpoint.Mediator.Destination)
+    }
     ret := make([]eventsv1alpha1.EventDestinationEndpoint, 0)
     /* iterate through each registered connections */
     for _, conn := range connectionsMgr.connections {
         /* iterate through eacn EventConnection */
         for _, eventConn := range conn.Spec.Connections {
-            if eventEndpointMatch(endpoint, &eventConn.From) {
+            matched := eventEndpointMatch(endpoint, &eventConn.From)
+            if endpoint.Mediator != nil && eventConn.From.Mediator != nil  {
+                klog.Infof("eventEndpointMatch:acutal: name: %v, mediation: %v, destination: %v, connections: name: %v, mediations: %v, destination: %v, equals: %v", endpoint.Mediator.Name, endpoint.Mediator.Mediation, endpoint.Mediator.Destination, eventConn.From.Mediator.Name, eventConn.From.Mediator.Mediation, eventConn.From.Mediator.Destination, matched)
+             }
+            if matched {
                  /* TODO: duplicate elimination */
                 for _, to := range eventConn.To {
                     ret = append(ret, to)
@@ -56,6 +64,7 @@ func (connectionsMgr *ConnectionsManager) LookupDestinationEndpoints(endpoint *e
             }
        }
     }
+    klog.Infof("LookupDestnationEndpoins returned %v endpoints", len(ret))
     return ret
 }
 
@@ -63,23 +72,30 @@ func (connectionsMgr *ConnectionsManager) LookupDestinationEndpoints(endpoint *e
    - actual: actual resource in the Eventmediator
      toMatch: resource defined in EventConnections 
 */
-func eventEndpointMatch(actual *eventsv1alpha1.EventEndpoint, resource *eventsv1alpha1.EventEndpoint) bool{
-    if actual.Group != resource.Group {
-         if resource.Group  != "" {
-              return false
-         }
-    }
-    if actual.Kind != resource.Kind {
-         return false
+func eventEndpointMatch(actual *eventsv1alpha1.EventSourceEndpoint, resource *eventsv1alpha1.EventSourceEndpoint) bool{
+    if actual.Mediator == resource.Mediator {
+        return true
     }
 
-
-    if actual.Name != resource.Name {
-          return false
-    }
-
-    if actual.Id != resource.Id {
+    if actual.Mediator == nil {
         return false
     }
+
+    if resource.Mediator == nil {
+        return false
+    }
+
+    if actual.Mediator.Name != resource.Mediator.Name {
+        return false
+    }
+
+    if actual.Mediator.Mediation != resource.Mediator.Mediation {
+        return false
+    }
+
+    if actual.Mediator.Destination != resource.Mediator.Destination {
+        return false
+    }
+
     return true
 }
