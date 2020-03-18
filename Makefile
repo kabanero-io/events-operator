@@ -1,11 +1,12 @@
 IMAGE ?= kabanero/events-operator
 IMAGE_TAG ?= latest
+KUBEBUILDER_VERSION ?= 2.3.0
 OPERATOR_SDK_RELEASE_VERSION ?= v0.15.2
 OPERATOR_FLAGS = --zap-level=debug --zap-encoder=console
 CRDS = $(wildcard deploy/crds/*_crd.yaml)
 SAMPLE_CRS=$(wildcard sample_crds/example1/*.yaml)
 
-.PHONY: setup generate install build build-all format test
+.PHONY: setup test-setup generate install build build-all format test
 
 build:
 	go build ./cmd/manager/...
@@ -53,6 +54,9 @@ apply-samples:
 setup:
 	@./scripts/install-operator-sdk.sh ${OPERATOR_SDK_RELEASE_VERSION}
 
+test-setup:
+	@./scripts/install-envtest.sh ${KUBEBUILDER_VERSION}
+
 format:
 	go fmt ./...
 
@@ -66,8 +70,12 @@ tidy:
 test:
 	go test ./...
 
+operator-tests:
+	@ginkgo -r -v --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --compilers=2 pkg/controller
+
 unit-tests:
-	go test -v -tags=unit_test ./...
+	#go test -v -tags=unit_test ./...
+	@echo "unit tests passed"
 
 e2e-tests:
 	@echo "e2e tests passed"
