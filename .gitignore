@@ -1,6 +1,9 @@
 # Executables
 /manager
 
+# Coverage files
+*.coverprofile
+
 # Makefile Targets
 /.apply-crds
 

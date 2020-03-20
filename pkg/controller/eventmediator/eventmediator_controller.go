@@ -274,7 +274,7 @@ func (r *ReconcileEventMediator) reconcileService(request reconcile.Request, ins
                 reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
                 return reconcile.Result{}, err
             }
-            // Servicecreated successfully - return and requeue
+            // Service created successfully - return and requeue
             return reconcile.Result{}, nil
         } else {
             return reconcile.Result{}, nil

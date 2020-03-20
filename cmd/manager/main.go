@@ -124,7 +124,7 @@ func main() {
 	}
 
 
-    /* TODO: get image name from the current running pod. We can't do it due to initialization orde rissue */
+    /* TODO: get image name from the current running pod. We can't do it due to initialization order issue */
     /* Init events execution environment */
     env := &eventenv.EventEnv {
         Client: mgr.GetClient(),
@@ -144,7 +144,7 @@ func main() {
 		os.Exit(1)
 	}
 
-    //Add route scheme
+    // Add route scheme
     if err := routev1.AddToScheme(mgr.GetScheme()); err != nil {
         log.Error(err, "")
         os.Exit(1)

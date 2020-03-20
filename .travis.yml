@@ -41,6 +41,19 @@ jobs:
     - echo "Image build succeeded and tagged."
     after_failure:
     - echo "Image build failed."
+  - name: Run operator tests
+    stage: test
+    install:
+    - go get -v github.com/onsi/ginkgo/ginkgo
+    - go get -v github.com/onsi/gomega
+    - export PATH=$PATH:$HOME/gopath/bin
+    - make test-setup
+    script:
+    - make operator-tests
+    after_success:
+    - echo "Operator tests passed."
+    after_failure:
+    - echo "Operator tests failed."
   - <<: *test
     name: Run unit tests
     script:
