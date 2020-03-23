@@ -19,7 +19,7 @@ func NewConnectionsManager() *ConnectionsManager {
 }
 
 func getKey(connections *eventsv1alpha1.EventConnections) string {
-	return connections.APIVersion + "/" + connections.Kind + "/" + connections.Namespace + "/" + connections.Name
+	return connections.Namespace + "/" + connections.Name
 }
 
 func (connectionsMgr *ConnectionsManager) AddConnections(connections *eventsv1alpha1.EventConnections) {
@@ -27,7 +27,6 @@ func (connectionsMgr *ConnectionsManager) AddConnections(connections *eventsv1al
 	defer connectionsMgr.mutex.Unlock()
 	key := getKey(connections)
 	connectionsMgr.connections[key] = connections
-
 }
 
 func (connectionsMgr *ConnectionsManager) RemoveConnections(connections *eventsv1alpha1.EventConnections) {
