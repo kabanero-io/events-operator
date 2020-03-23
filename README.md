@@ -4,7 +4,10 @@
 ## Table of Contents
 - [Introduction](#introduction)
 - [Functional Specification](#functional-specification)
+- [Webhook Processing](#webhook-processing)
+- [Kabanero Integration](#kabanero-integration)
 
+<a name="introduction"></a>
 ## Introduction
 
 The events operator allows users to define a Kubernetes centric event mediation flow. 
@@ -12,9 +15,11 @@ Through custom resource
 definitions, users can quickly construct mediation logic to receive, transform, and route JSON data structure.
 The transformation logic is based on Common Expression Language (CEL) 
 
+<a name="functional-specification"></a>
 ## Functional Specification
 
 The main components of events infrastructure are:
+
 - event mediator: defines what is to be run within one container. 
 It it consists of an optional https listener, and a list of mediations.
 - event mediation: user defined logic used to transform or route events.
@@ -75,6 +80,7 @@ Its general form looks like :
 
 
 The attributes are:
+
 - name: the name of the mediation. Note that the URL to the mediator must include the mediation name as the component of
   the path.
 - input: Name of the variable to store the input message. If the input comes from a https listener, the body of the message is stored in `message.body`, and the header of the message is stored in `message.header`.
@@ -82,6 +88,7 @@ The attributes are:
 - body: body that contains code based on Common Expression Language (CEL) to process the message.
 
 The `body` of a mediation is an array of JSON objects, where each object may contain one or multiples of:
+
 - An assignment
 - An `if` statement
 - A `switch` statement
@@ -116,6 +123,7 @@ spec:
 ```
 
 More formally, 
+
 - A `body` is an array of JSON objects, where each array element that may contain the attribute names : `=`, `if`, `switch`, and `default`.
 - The valid combinations of the attribute names in the same JSON object are:
   - `=`: an single assignment statement 
@@ -195,16 +203,19 @@ This example keeps only those elements of the input `header` variable that is se
 The `call` function is used to call a user defined function.
 
 Input:
+
 - name: name of the function
 - param: parameter for the function
 
 Output:
+
 - return value from the function
 
 
 Example:
 
 The function `sum` implements a recursive function to calculate sum of all numbers from 1 to input:
+
 ```yaml
 functions:
   - name: sum
@@ -224,15 +235,17 @@ functions:
 The sendEvent function sends an event to a destination.
 
 Input:
-  - destination: destination to send the event
-  - message: a JSON compatible message. If the message is to be delivered through http(s), the message should contain two attributes:
-    - body: the body of a REST-ful message
-    - header: the header for the REST-ful emssage
+
+- destination: destination to send the event
+- message: a JSON compatible message. If the message is to be delivered through http(s), the message should contain two attributes:
+- body: the body of a REST-ful message
+- header: the header for the REST-ful emssage
 
 
 Output: empty string if OK, otherwise, error message
 
 Example:
+
 ```yaml
   - =: 'result=  sendEvent("tekton-listener", message )'
 ```
@@ -266,18 +279,21 @@ Output: the string converted to label format
 The `split` function splits a string into an array of strings.
 
 Input: 
-  - str: string to split
-  - separator: the separator to split on
+
+- str: string to split
+- separator: the separator to split on
 
 Output: array of string containing original string separated by the separator.
 
 Example:
+
 ```yaml
   - =: 'components = split('a/b/c', '/') '
 ```
 
 After split, the variable components contains `[ "a", "b", "c" ]`.
 
+<a name="webhook-processing"></a>
 ### Webhook Processing
 
 The mediator framework provides additional function to facilitate the processing of webhook messages.
@@ -323,6 +339,7 @@ spec:
 The `repositories` attribute defines repository related configuration. For `github` repository, you may define a secret to verify the authencitity of the webhook originator. It is the same secret you specified when configuring the webhook on github. 
 
 The `selector` defines which mediation to call based on the specified criteria:
+
 - The `urlPattern` matches the pattern to the incoming URL. Currently only exact match is supported.
 - The `repositoryType` matches the type of the repository. The mediation is called only if the specified `file` exists in the repository. 
 In addition, the content of the `file` is read and bound to the the variable `newVariable`.
@@ -335,6 +352,7 @@ In addition, the mediation automatically adds additional predefined variables to
 - `body.webhooks-tekton-git-org` : The git organization
 - `body.webhooks-tekton-git-repo`: The name of the git repository.
 - `body.webhooks-tekton-event-type`: One of `pull_request`, `push`, or `tag`.
+- `body.webhooks-tekton-monitor`: `true` if the monitor task should be started.
 
 
 When processing an incoming webhook message, the flow is as follows:
@@ -350,10 +368,31 @@ When processing an incoming webhook message, the flow is as follows:
 
 This section contains the configurations for secured access to Github.
 
-### Events Operator and Kabanero
+<a name="kabanero-integration"></a>
+### Kabanero Integration
 
-This section contains the steps to use the events-operator to create a webhook to drive Tekton pipelines installed with Kabanero. 
-The webhook listener serves as a front-end disptacher to route webhook messages to the correct version of the Tekton event listener shipped with Kabanero.
+This section describes how the event mediator is integrated with Kabanero.
+For now, the integration point is to use the event mediator 
+as a webhook to drive Tekton pipelines installed with Kabanero. 
+
+![Webhook Mediator](drawings/webhook-mediator.jpg)
+
+As shown above,  the webhook mediator may be used with a github organizational webhook. Once defined, all webhook events within the organization are sent the the same webhook mediator.  The mediator does the following for appsody projects:
+
+1. Determine that the type of the repository is appsody.
+2. Find the best matching Tekton event listener based on the semantic version of the project.
+3. Generate parameters required for the Tekton listener and Tekton trigger bindings.
+4. Forward the request to the listener.
+
+For example, steps to process the pull request for project1 involves:
+
+1. Webhook mediator receives a pull request webhook event.
+1. Webhook mediator determines the type of the repository is appsody, and the requested stack version 0.2.
+1. Webhook mediator locates the Tekton event listener that best matches the stack, which is listener for stack version 0.3.3.
+1. Webhook mediator add Tekton related parameters to the message body.
+1. Webhook mediator forwards the webhook message with the added parameters to the Tekton listener.
+
+
 
 #### Install Kabnaero
 
@@ -372,6 +411,7 @@ The required secrets for the events-operator and Tekton pipelines are TBD.
 
 Modify and apply the CRD below to create a new webhook listener.  
 At the minimum, you want to change:
+
 - the github `secret` to match the secret you specified when creating the webhook.
 
 ```yaml
@@ -498,12 +538,15 @@ status:
 ```
 
 Note that:
+
 - The version of the stack is `0.3.3`
 - The Tekton event listener for driving the pipelines for this stack is `listener-0d049bb1`.
 
-When a new webhook message is received, the event mediator uses the `selector` in the mediator to find a matching mediation. It verisfies the url pattern of the webhook request, the github secret, and reads `.appsody-config.yaml`. This allows it to associates the webhook event with the mediation `appsody`.
+When a new webhook message is received, the event mediator uses the `selector` in the mediator to find a matching mediation. 
+It verifies the url pattern of the webhook request, the github secret, and reads `.appsody-config.yaml`. 
+This allows it to associates the webhook event with the mediation `appsody`.
 
-The event mediator applies special logic for appsody projects.
+The event mediator applies additional logic for appsody projects.
 First, it finds the best matching active stack by matching its `.spec.images[i].name` to the stack name as defined in `appsody-config.yaml`. 
 It uses `.spec.images[i].version` to find the best semantically matched version.
 It uses `.status` to ensure that the version is active.
@@ -556,5 +599,5 @@ spec:
      name: monitor-task-template-0d049bb1
      interceptors:
       - cel:
-          filter: 'has(body.webhooks-event-type) && (body.webhooks-event-type == "pull_request" || body.webhooks-event-type == "push" '
+          filter: 'has(body.webhooks-tekton-monitor) && body.webhooks-tekton-monitor" '
 ```
