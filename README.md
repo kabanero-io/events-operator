@@ -377,19 +377,19 @@ as a webhook to drive Tekton pipelines installed with Kabanero.
 
 ![Webhook Mediator](drawings/webhook-mediator.jpg)
 
-As shown above,  the webhook mediator may be used with a github organizational webhook. Once defined, all webhook events within the organization are sent the the same webhook mediator.  The mediator does the following for appsody projects:
+As shown above,  the webhook mediator may be used with a github organizational webhook. Once defined, all webhook events within the organization are sent to the the same webhook mediator.  The mediator does the following for appsody projects:
 
 1. Determine that the type of the repository is appsody.
 2. Find the best matching Tekton event listener based on the semantic version of the project.
 3. Generate parameters required for the Tekton listener and Tekton trigger bindings.
 4. Forward the request to the listener.
 
-For example, steps to process the pull request for project1 involves:
+For example, the steps to process the pull request for project1 involves:
 
 1. Webhook mediator receives a pull request webhook event.
 1. Webhook mediator determines the type of the repository is appsody, and the requested stack version 0.2.
 1. Webhook mediator locates the Tekton event listener that best matches the stack, which is listener for stack version 0.3.3.
-1. Webhook mediator add Tekton related parameters to the message body.
+1. Webhook mediator add the Tekton related parameters to the message body.
 1. Webhook mediator forwards the webhook message with the added parameters to the Tekton listener.
 
 
@@ -479,7 +479,7 @@ To create an organization webhook,  follow the instructions here: https://help.g
 
 If you are not working within an enterprise, you may also create per-repository webhook.
 
-#### Kabanero Webhook Processing Flow for Appsody Proejcts
+#### Kabanero Webhook Processing Flow for Appsody Projects
 
 Let's illustrate the flow with a sample appsody project whose `.appsody-config.yaml` looks like:
 
