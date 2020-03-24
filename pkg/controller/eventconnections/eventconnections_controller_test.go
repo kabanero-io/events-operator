@@ -3,7 +3,6 @@ package eventconnections_test
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
@@ -88,7 +87,7 @@ var _ = Describe("EventConnectionsController", func() {
 		},
 	}
 
-	// Get a resource and retry 5 times every 100 ms if resource doesn't satisfy predicate.
+	// Get a resource and retry 5 times every 200 ms if resource doesn't satisfy predicate.
 	getResource := func(predicate func(*v1alpha1.EventConnections) bool) bool {
 		retriesLeft := 5
 		for retriesLeft > 0 {
@@ -99,7 +98,7 @@ var _ = Describe("EventConnectionsController", func() {
 				return true
 			}
 			retriesLeft--
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 		}
 		return false
 	}
@@ -131,7 +130,7 @@ var _ = Describe("EventConnectionsController", func() {
 			By("Verifying that the returned endpoint from LookupDestinationEndpoints matches spec")
 			for _, conn := range spec.Connections {
 				endpoints := eventenv.GetEventEnv().ConnectionsMgr.LookupDestinationEndpoints(&conn.From)
-				Expect(reflect.DeepEqual(endpoints, conn.To)).Should(BeTrue())
+				Expect(endpoints).Should(Equal(conn.To))
 			}
 
 			By("Updating an existing EventConnections CR")
@@ -158,11 +157,11 @@ var _ = Describe("EventConnectionsController", func() {
 			By("Verifying that the returned endpoint from LookupDestinationEndpoints matches spec")
 			for _, conn := range spec.Connections {
 				endpoints := eventenv.GetEventEnv().ConnectionsMgr.LookupDestinationEndpoints(&conn.From)
-				Expect(reflect.DeepEqual(endpoints, conn.To)).Should(BeTrue())
+				Expect(endpoints).Should(Equal(conn.To))
 			}
 
 			By("Deleting an EventConnections CR")
-			// numInitialConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
+			numInitialConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
 
 			// Delete the CR
 			Eventually(func() error {
@@ -177,10 +176,9 @@ var _ = Describe("EventConnectionsController", func() {
 				return env.GetClient().Get(context.Background(), key, f)
 			}, timeout, interval).ShouldNot(Succeed())
 
-			// TODO: Uncomment this once connections are properly removed from the ConnectionManager.
-			// By("Checking that the connection manager has 1 fewer EventConnections")
-			// numConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
-			// Expect(numConnections).Should(Equal(numInitialConnections - 1))
+			By("Checking that the connection manager has 1 fewer EventConnections")
+			numConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
+			Expect(numConnections).Should(Equal(numInitialConnections - 1))
 		})
 	})
 })

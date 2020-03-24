@@ -5,14 +5,17 @@ import (
 
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
 	// corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	//"k8s.io/apimachinery/pkg/types"
+	// "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	//"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	// "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -46,14 +49,31 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Only need to watch for resources while acting as a controller so skip if running in the operator
+	if eventenv.GetEventEnv().IsOperator {
+		return nil
+	}
+
 	// Watch for changes to primary resource EventConnections
-    if !eventenv.GetEventEnv().IsOperator {
-        err = c.Watch(&source.Kind{Type: &eventsv1alpha1.EventConnections{}}, &handler.EnqueueRequestForObject{})
-        if err != nil {
-            return err
-        }
-    }
-	return nil
+	controllerPredicate := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// Ignore status updates
+			return e.MetaOld.GetGeneration() != e.MetaNew.GetGeneration()
+		},
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			instance := e.Object.(*eventsv1alpha1.EventConnections)
+			eventenv.GetEventEnv().ConnectionsMgr.RemoveConnections(instance)
+			return true
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return true
+		},
+	}
+
+	return c.Watch(&source.Kind{Type: &eventsv1alpha1.EventConnections{}}, &handler.EnqueueRequestForObject{}, controllerPredicate)
 }
 
 // blank assignment to verify that ReconcileEventConnections implements reconcile.Reconciler
