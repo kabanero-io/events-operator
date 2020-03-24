@@ -601,3 +601,101 @@ spec:
       - cel:
           filter: 'has(body.webhooks-tekton-monitor) && body.webhooks-tekton-monitor" '
 ```
+
+#### Proposal to Determine Which Event Listener and Pipeline to run
+
+
+The Kabanero CRD allows multiple stacks and multiple pipelines to be active simultaneously.
+For example:
+
+```yaml
+apiVersion: kabanero.io/v1alpha2
+kind: Kabanero
+metadata:
+name: kabanero
+namespace: kabanero
+    pipelines:
+    - gitRelease: {}
+      https:
+        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.7.0-rc.1/default-kabanero-pipelines.tar.gz
+      id: default
+      sha256: 8d2cba24eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
+    - gitRelease: {}
+      https:
+        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/1.0.0-rc.1/default-kabanero-pipelines.tar.gz
+      id: default
+      sha256: 8d2cba24eef31fea470abc860909b407f0af54016acb79b723c04c7112345678
+    - gitRelease: {}
+      https:
+        url: https://github.com/kabanero-io/other-pipelines/releases/download/0.7.0-rc.2/default-kabanero-pipelines.tar.gz
+      id: default
+      sha256: 8d2cba24eef31fea470abc860909b407f0af54016acb79b723c04c7187654321
+    repositories:
+    - gitRelease: {}
+      https:
+        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.7.0-rc.1/kabanero-stack-hub-index.yaml
+      name: central
+    - gitRelease: {}
+      https:
+        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.8.0-rc.1/kabanero-stack-hub-index.yaml
+      name: central
+  version: 0.7.0
+```
+
+When a pipeline release is activated, a set of pipeline related resources and a Tekton EventListener is created for that release. The name of the resources contain a suffix derived from the SHA for that release. For example, for release 0.7.0
+
+```yaml
+apiVersion: tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: listener-1350d344
+  namespace: kabanero
+```
+
+```yaml
+apiVersion: tekton.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: build-deploy-pl-1350d344
+```
+
+and for release 0.8.0:
+
+```yaml
+apiVersion: tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: listener-12345678
+  namespace: kabanero
+```
+
+```yaml
+apiVersion: tekton.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: build-deploy-pl-12345678
+```
+
+The Tekton EventListener determines which pipeline to run based parameters passed in, which include:
+
+- The webhook message from github
+- Additional parameters generated from the events mediator, including the type of event: push, pull_request, or tag.
+
+The event mediator needs to determine the "best match" Tekton event listener to call, in order to trigger the "best match" pipeline.
+It is possible for there to be multiple releases of pipelines installed. 
+It is also possible that only a subset of the releases contain appsody related pipelines.
+
+Let's make the following assumptions:
+
+1. Appsody builds pipelines originate from the same repository.
+1. A later release of the pipeline is a better match compared to an earlier release.
+1. The pipelines in each active pipeline release can handle all outstanding stack versions.
+
+Based on the above simplifying assumptions, the stack operator updates the status of each stack with the "best matching" pipeline release choosing the highest available pipeline release that contains appsody pipelines. 
+The stack operator determines that a pipeline release contains appsody pipelines:
+
+- Currently: by assuming there is only one pipeline repository.
+- Later: by inspecting the contents of Pipeline. For example, a special label with:
+  - name: kabanero.io/repository-type
+  - value: appsody
+- Even further in the future: If some pipelines only work for specific versions of stacks, additional metadata may be added.
