@@ -450,7 +450,8 @@ spec:
           - name: message.body.webhooks-tekton-release-name
             value: 'message.body.webhooks-appsody.project-name'
           body:
-              - = : 'sendEvent(dest, message)'
+              - if : repository in permitted
+                 - = : 'sendEvent(dest, message)'
   ```
 
 ```yaml
@@ -479,7 +480,7 @@ To create an organization webhook,  follow the instructions here: https://help.g
 
 If you are not working within an enterprise, you may also create per-repository webhook.
 
-#### Kabanero Webhook Processing Flow for Appsody Projects
+#### Kabanero Web hook Processing Flow for Appsody Projects
 
 Let's illustrate the flow with a sample appsody project whose `.appsody-config.yaml` looks like:
 
@@ -490,7 +491,45 @@ stack: docker.io/kabanero/nodejs:0.3
 
 The name of this project is `test1`, and the name of the stack is `docker.io/kabanero/nodejs`. The version of the stack is `0.3`. It may be built with any Kabanero build pipeline that is semantically matched  to version 0.3. 
 
-Let's assume that the currently active best matching stack looks like:
+The association between a stack and its corresponding build pipelines is specified in the Kabanero CRD. In the following example, pipeline release 0.3.0-rc1 is used to build appsody stacks in release 0.3.0-rc1. And the pipelines in release 1.0.0.-rc is used to build the stacks in release 1.0.0-rc1.
+
+
+```yaml
+apiVersion: kabanero.io/v1alpha2
+kind: Kabanero
+metadata:
+  name: kabanero
+  namespace: kabanero
+  resourceVersion: "244275"
+  selfLink: /apis/kabanero.io/v1alpha2/namespaces/kabanero/kabaneros/kabanero
+  uid: b217411a-480b-41e4-b01b-8e2aabec165d
+spec:
+  stacks:
+    repositories:
+    - gitRelease: {}
+      name: central
+      https:
+        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.3.0-rc.1/kabanero-stack-hub-index.yaml
+      pipelines:
+      - gitRelease: {}
+        https:
+          url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.3.0-rc.1/default-kabanero-pipelines.tar.gz
+        id: default
+        sha256: 87654321eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
+    - gitRelease: {}
+      name: central
+      https:
+        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/1.0.0-rc.1/kabanero-stack-hub-index.yaml
+      pipelines:
+      - gitRelease: {}
+        https:
+          url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/1.0.0-rc.1/default-kabanero-pipelines.tar.gz
+        id: default
+        sha256: 12345678eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
+  version: 0.7.0
+```
+
+After the kabanero CRD is applied, the Stack CRD is created to track the pipeline resources associated with the stack release. For example, 
 
 ```yaml
 apiVersion: kabanero.io/v1alpha2
@@ -508,12 +547,22 @@ spec:
     pipelines:
     - gitRelease: {}
       https:
-        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.7.0/default-kabanero-pipelines.tar.gz
+        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.3.0/default-kabanero-pipelines.tar.gz
       id: default
-      sha256: e6ebc6aeaf21540f0d0dac8caf0a2d805e8d90f174cb912a31831f700d049bb1
+      sha256: 876543221af21540f0d0dac8caf0a2d805e8d90f174cb912a31831f700d049bb1
     version: 0.3.3
+  - images:
+    - id: Node.js
+      image: docker.io/kabanero/nodejs
+    pipelines:
+    - gitRelease: {}
+      https:
+        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/1.0.0/default-kabanero-pipelines.tar.gz
+      id: default
+      sha256: 12345678af21540f0d0dac8caf0a2d805e8d90f174cb912a31831f700d049bb1
+    version: 1.0.0
 status:
-  summary: '[ 0.3.3: active ]'
+  summary: '[ 0.3.3: active ] [ 1.0.0: active ]'
   versions:
   - images:
     - id: Node.js
@@ -526,21 +575,44 @@ status:
         group: tekton.dev
         kind: EventListener
         namespace: kabanero
-        assetName: listener-0d049bb1
-      - assetDigest: ea8305b0601fbb577ce2fdf3557261ef5c3915bb15d5ea5f9423191e2366bb0b
+        assetName: listener-12345678
+      - assetDigest: 12345678601fbb577ce2fdf3557261ef5c3915bb15d5ea5f9423191e2366bb0b
         assetName: build-push-pl-0d049bb1
         group: tekton.dev
         kind: Pipeline
         namespace: kabanero
         status: active
+        version: v1alpha1a
+    status: active
+    version: 0.3.3
+  - images:
+    - id: Node.js
+      image: docker.io/kabanero/nodejs
+    pipelines:
+    - activeAssets:
+      - assetDigest: ...
         version: v1alpha1
-..
+        status: active
+        group: tekton.dev
+        kind: EventListener
+        namespace: kabanero
+        assetName: listener-87654321
+      - assetDigest: 87654321601fbb577ce2fdf3557261ef5c3915bb15d5ea5f9423191e2366bb0b
+        assetName: build-push-pl-0d049bb1
+        group: tekton.dev
+        kind: Pipeline
+        namespace: kabanero
+        status: active
+        version: v1alpha1a
+    status: active
+    version: 1.0.0
+...
 ```
 
 Note that:
 
 - The version of the stack is `0.3.3`
-- The Tekton event listener for driving the pipelines for this stack is `listener-0d049bb1`.
+- The Tekton event listener for driving the pipelines for this stack is `listener-12345678`.
 
 When a new webhook message is received, the event mediator uses the `selector` in the mediator to find a matching mediation. 
 It verifies the url pattern of the webhook request, the github secret, and reads `.appsody-config.yaml`. 
@@ -550,16 +622,16 @@ The event mediator applies additional logic for appsody projects.
 First, it finds the best matching active stack by matching its `.spec.images[i].name` to the stack name as defined in `appsody-config.yaml`. 
 It uses `.spec.images[i].version` to find the best semantically matched version.
 It uses `.status` to ensure that the version is active.
-It creates the variable `message.body.webhooks-kabanero-tekton-listener` to be `listener-0d049bb1`.
-
-**Question**: For multiple versions of the same stack, are they defined through different Stack resources, or is the array used? How about the status?
+It creates the variable `message.body.webhooks-kabanero-tekton-listener` to be `listener-12345678`.
 
 It also creates all the default variables and user defined variables to be passed downstream to the Tekton event listener.
 
 When sending the message downstream, the URL as defined in the EventConnection is:`https://${message.body.webhooks-kabanero-tekton-listener}`. 
-The resolves to: `https://listener-0d049bb1`
+The resolves to: `https://listener-12345678`
 
-The Kabanero Tekton event listener:
+The Tekton event listener is configured to trigger the correct pipeline based on input parameters. 
+For the example below, there is a separate pipeline called depending on whether it is a push or pull request.
+In addition, a separate monitor task is created when the event mediator decides 
 
 ```yaml
 apiVersion: tekton.dev/v1alpha1
@@ -601,101 +673,3 @@ spec:
       - cel:
           filter: 'has(body.webhooks-tekton-monitor) && body.webhooks-tekton-monitor" '
 ```
-
-#### Proposal to Determine Which Event Listener and Pipeline to run
-
-
-The Kabanero CRD allows multiple stacks and multiple pipelines to be active simultaneously.
-For example:
-
-```yaml
-apiVersion: kabanero.io/v1alpha2
-kind: Kabanero
-metadata:
-name: kabanero
-namespace: kabanero
-    pipelines:
-    - gitRelease: {}
-      https:
-        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.7.0-rc.1/default-kabanero-pipelines.tar.gz
-      id: default
-      sha256: 8d2cba24eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
-    - gitRelease: {}
-      https:
-        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/1.0.0-rc.1/default-kabanero-pipelines.tar.gz
-      id: default
-      sha256: 8d2cba24eef31fea470abc860909b407f0af54016acb79b723c04c7112345678
-    - gitRelease: {}
-      https:
-        url: https://github.com/kabanero-io/other-pipelines/releases/download/0.7.0-rc.2/default-kabanero-pipelines.tar.gz
-      id: default
-      sha256: 8d2cba24eef31fea470abc860909b407f0af54016acb79b723c04c7187654321
-    repositories:
-    - gitRelease: {}
-      https:
-        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.7.0-rc.1/kabanero-stack-hub-index.yaml
-      name: central
-    - gitRelease: {}
-      https:
-        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.8.0-rc.1/kabanero-stack-hub-index.yaml
-      name: central
-  version: 0.7.0
-```
-
-When a pipeline release is activated, a set of pipeline related resources and a Tekton EventListener is created for that release. The name of the resources contain a suffix derived from the SHA for that release. For example, for release 0.7.0
-
-```yaml
-apiVersion: tekton.dev/v1alpha1
-kind: EventListener
-metadata:
-  name: listener-1350d344
-  namespace: kabanero
-```
-
-```yaml
-apiVersion: tekton.dev/v1alpha1
-kind: Pipeline
-metadata:
-  name: build-deploy-pl-1350d344
-```
-
-and for release 0.8.0:
-
-```yaml
-apiVersion: tekton.dev/v1alpha1
-kind: EventListener
-metadata:
-  name: listener-12345678
-  namespace: kabanero
-```
-
-```yaml
-apiVersion: tekton.dev/v1alpha1
-kind: Pipeline
-metadata:
-  name: build-deploy-pl-12345678
-```
-
-The Tekton EventListener determines which pipeline to run based parameters passed in, which include:
-
-- The webhook message from github
-- Additional parameters generated from the events mediator, including the type of event: push, pull_request, or tag.
-
-The event mediator needs to determine the "best match" Tekton event listener to call, in order to trigger the "best match" pipeline.
-It is possible for there to be multiple releases of pipelines installed. 
-It is also possible that only a subset of the releases contain appsody related pipelines.
-
-Let's make the following assumptions:
-
-1. Appsody builds pipelines originate from the same repository.
-1. A later release of the pipeline is a better match compared to an earlier release.
-1. The pipelines in each active pipeline release can handle all outstanding stack versions.
-
-Based on the above simplifying assumptions, the stack operator updates the status of each stack with the "best matching" pipeline release choosing the highest available pipeline release that contains appsody pipelines. 
-The stack operator determines that a pipeline release contains appsody pipelines:
-
-- Currently: by assuming there is only one pipeline repository.
-- Later: by inspecting the contents of Pipeline. For example, a special label with:
-  - name: kabanero.io/repository-type
-  - value: appsody
-- Even further in the future: If some pipelines only work for specific versions of stacks, additional metadata may be added.
