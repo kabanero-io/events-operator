@@ -23,9 +23,18 @@ type EventMediatorSpec struct {
     CreateListener  bool `json:"createListener,omitempty"`
     ListenerPort int32    `json:"listenerPort,omitempty"`
     CreateRoute    bool `json:"createRoute,omitempty"`
+    Repositories *[]EventRepository `json:"repositories,omitempty"`
 
     // ImportMediations  *[]string `json:"importMediations,omitempty"` // default is to import everything unless code is specified
     Mediations *[]MediationsImpl `json:"mediations"`
+}
+
+type EventRepository struct {
+    Github *EventGithubRepository `json:"github,omitempty"`
+}
+
+type EventGithubRepository struct {
+    Secret string `json:"secret,omitempty"`
 }
 
 
@@ -59,9 +68,26 @@ type EventFunctionImpl struct {
 
 type EventMediationImpl  struct {
     Name string `json:"name"`
-    Input string `json:"input"`
+    Input string `json:"input,omitempty"`
     SendTo []string `json:"sendTo,omitempty"`
+    Selector *EventMediationSelector `json:"selector,omitempty"`
+    Variables *[]EventMediationVariable `json:"variables,omitempty"`
     Body []EventStatement `json:"body,omitempty"`
+}
+
+type EventMediationVariable struct {
+    Name string `json:"name"`
+    Value string `json:"value"`
+}
+
+type EventMediationSelector struct {
+    UrlPattern string `json:"urlPattern,omitempty"`
+    RepositoryType *EventMediationRepositoryType `json:"repositoryType,omitempty"`
+}
+
+type EventMediationRepositoryType struct {
+    File string `json:"file"`
+    newVariable string `json:"newVariable"`
 }
 
 // EventMediatorStatus defines the observed state of EventMediator
