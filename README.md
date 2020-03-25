@@ -293,6 +293,59 @@ Example:
 
 After split, the variable components contains `[ "a", "b", "c" ]`.
 
+### Event Connections
+
+Event connections maps the destinations of mediations to real endpoints. Currently only https endpoints are supported. 
+
+Given the mediator with mediation named `webhook` below:
+
+```yaml
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: webhook
+spec:
+  createListener: true
+  createRoute: true
+  mediations:
+    - mediation:
+        name: webhook
+        sendTo: [ "dest"  ]
+        body:
+          - = : 'sendEvent(dest, message)'
+```
+
+The connection specification may look like:
+
+```yaml
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: example1
+spec:
+  connections:
+    - from:
+        mediator:
+            name: webhook
+            mediation: webhook
+            destination: dest
+      to:
+        - https:
+            - url: https://mediator1/mediation1
+              insecure: true
+            - url: https://mediator2/mediation1
+              insecure: true
+```
+
+The `from` attribute specifies:
+
+- The name of the mediator
+- The name of the mediation within the mediator
+- The name of the destination for the mediation.
+
+The `to` attribute currently only supports https endpoints. The url may be any REST endpoint. If pointing to another mediator, the other mediator's `createListener` attribute must be set to `true`, and the URL to use is: `https://<service-name>/<mediation name>`, where `<service-name>` is the name of the mediator.
+
+
 <a name="webhook-processing"></a>
 ### Webhook Processing
 
@@ -515,7 +568,7 @@ spec:
         https:
           url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.3.0-rc.1/default-kabanero-pipelines.tar.gz
         id: default
-        sha256: 87654321eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
+        sha256: 12345678eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
     - gitRelease: {}
       name: central
       https:
@@ -525,7 +578,7 @@ spec:
         https:
           url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/1.0.0-rc.1/default-kabanero-pipelines.tar.gz
         id: default
-        sha256: 12345678eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
+        sha256: 87654321eef31fea470abc860909b407f0af54016acb79b723c04c711350d344
   version: 0.7.0
 ```
 
@@ -535,7 +588,7 @@ After the kabanero CRD is applied, the Stack CRD is created to track the pipelin
 apiVersion: kabanero.io/v1alpha2
 kind: Stack
 metadata:
-  name: nodejs-0d049bb1
+  name: nodejs
   namespace: kabanero
   ...
 spec:
@@ -577,7 +630,7 @@ status:
         namespace: kabanero
         assetName: listener-12345678
       - assetDigest: 12345678601fbb577ce2fdf3557261ef5c3915bb15d5ea5f9423191e2366bb0b
-        assetName: build-push-pl-0d049bb1
+        assetName: build-push-pl-12345678
         group: tekton.dev
         kind: Pipeline
         namespace: kabanero
@@ -598,7 +651,7 @@ status:
         namespace: kabanero
         assetName: listener-87654321
       - assetDigest: 87654321601fbb577ce2fdf3557261ef5c3915bb15d5ea5f9423191e2366bb0b
-        assetName: build-push-pl-0d049bb1
+        assetName: build-push-pl-87654321
         group: tekton.dev
         kind: Pipeline
         namespace: kabanero
@@ -637,7 +690,7 @@ In addition, a separate monitor task is created when the event mediator decides
 apiVersion: tekton.dev/v1alpha1
 kind: EventListener
 metadata:
-  name: listener-0d049bb1
+  name: listener-12345678
   namespace: kabanero
 spec:
   serviceAccountName: tekton-webhooks-extension-eventlistener
@@ -646,29 +699,29 @@ spec:
     name: kabanero-push-event
     template:
       apiversion: v1alpha1
-      name: build-deploy-pl-template-0d049bb1
+      name: build-deploy-pl-template-12345678
     - apiversion: v1alpha1
-      name: build-deploy-pl-push-binding-0d049bb1
+      name: build-deploy-pl-push-binding-12345678
     - interceptor:
       - cel:
           filter: 'has(body.wehbooks-event-type) && body.webhooks-event-type == "push" '
   - bindings:
     name: kabanero-pullrequest-event
     - apiversion: v1alpha1
-      name: build-deploy-pl-pullrequest-binding-0d049bb1
+      name: build-deploy-pl-pullrequest-binding-12345678
     template:
       apiversion: v1alpha1
-      name: build-deploy-pl-template-0d049bb1
+      name: build-deploy-pl-template-12345678
     interceptors:
       - cel:
           filter: 'has(body.webhooks-event-type) && body.webhooks-event-type == "pull_request" '
   - bindings:
     name: kabanero-monitor-task-event
     - apiversion: v1alpha1
-      name: monitor-task-github-binding-0d049bb1
+      name: monitor-task-github-binding-12345678
     template:
      apiversion: v1alpha1
-     name: monitor-task-template-0d049bb1
+     name: monitor-task-template-12345678
      interceptors:
       - cel:
           filter: 'has(body.webhooks-tekton-monitor) && body.webhooks-tekton-monitor" '
