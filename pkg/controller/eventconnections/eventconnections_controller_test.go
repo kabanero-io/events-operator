@@ -2,7 +2,6 @@ package eventconnections_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -87,22 +86,6 @@ var _ = Describe("EventConnectionsController", func() {
 		},
 	}
 
-	// Get a resource and retry 5 times every 200 ms if resource doesn't satisfy predicate.
-	getResource := func(predicate func(*v1alpha1.EventConnections) bool) bool {
-		retriesLeft := 5
-		for retriesLeft > 0 {
-			By(fmt.Sprintf("Waiting for EventConnections with name %s in namespace %s that satifies condition", key.Name, key.Namespace))
-			f := &v1alpha1.EventConnections{}
-			err := env.GetClient().Get(context.Background(), key, f)
-			if err == nil && predicate(f) {
-				return true
-			}
-			retriesLeft--
-			time.Sleep(200 * time.Millisecond)
-		}
-		return false
-	}
-
 	Context("EventConnections", func() {
 		It("should be created, updated, and deleted successfully", func() {
 			By("Applying a new EventConnections CR")
@@ -115,26 +98,32 @@ var _ = Describe("EventConnectionsController", func() {
 				Spec: spec,
 			}
 
-			numInitialConnections := eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
+			cm := eventenv.GetEventEnv().ConnectionsMgr
+
+			numInitialConnections := cm.ConnectionCount()
 			Expect(env.GetClient().Create(context.Background(), created)).Should(Succeed())
 
 			// Wait for EventConnections to be applied
-			Expect(getResource(func(f *v1alpha1.EventConnections) bool {
-				return len(f.Spec.Connections) > 0
-			})).To(BeTrue())
+			Eventually(func() int {
+				f := &v1alpha1.EventConnections{}
+				err := env.GetClient().Get(context.Background(), key, f)
+				if err != nil {
+					return 0
+				}
+				return len(f.Spec.Connections)
+			}, "2s", "200ms").Should(BeNumerically(">", 0))
 
 			By("Checking that it has only 1 EventConnections more than it did before")
-			numConnections := eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
-			Expect(numConnections).Should(Equal(numInitialConnections + 1))
+			Eventually(cm.ConnectionCount(), "2s", "200ms").Should(Equal(numInitialConnections + 1))
 
 			By("Verifying that the returned endpoint from LookupDestinationEndpoints matches spec")
 			for _, conn := range spec.Connections {
-				endpoints := eventenv.GetEventEnv().ConnectionsMgr.LookupDestinationEndpoints(&conn.From)
-				Expect(endpoints).Should(Equal(conn.To))
+				endpoints := cm.LookupDestinationEndpoints(&conn.From)
+				Eventually(endpoints, "2s", "200ms").Should(Equal(conn.To))
 			}
 
 			By("Updating an existing EventConnections CR")
-			numInitialConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
+			numInitialConnections = cm.ConnectionCount()
 
 			// Update the spec
 			spec.Connections[0].From.Mediator.Mediation = "updated-mediator"
@@ -145,23 +134,27 @@ var _ = Describe("EventConnectionsController", func() {
 			updated.Spec.Connections[0].From.Mediator.Mediation = "updated-mediator"
 			Expect(env.GetClient().Update(context.Background(), updated)).Should(Succeed())
 
-			// Wait for EventConnections to be applied
-			Expect(getResource(func(f *v1alpha1.EventConnections) bool {
-				return len(f.Spec.Connections) > 0 && f.Spec.Connections[0].From.Mediator.Mediation == "updated-mediator"
-			})).To(BeTrue())
+			// Wait for EventConnections to be updated
+			Eventually(func() string {
+				f := &v1alpha1.EventConnections{}
+				err := env.GetClient().Get(context.Background(), key, f)
+				if err != nil || len(f.Spec.Connections) == 0 {
+					return ""
+				}
+				return f.Spec.Connections[0].From.Mediator.Mediation
+			}, "2s", "200ms").Should(Equal(updated.Spec.Connections[0].From.Mediator.Mediation))
 
 			By("Checking that the number of EventConnections is the same")
-			numConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
-			Expect(numConnections).Should(Equal(numInitialConnections))
+			Consistently(cm.ConnectionCount(), "1s", "200ms").Should(Equal(numInitialConnections))
 
 			By("Verifying that the returned endpoint from LookupDestinationEndpoints matches spec")
 			for _, conn := range spec.Connections {
-				endpoints := eventenv.GetEventEnv().ConnectionsMgr.LookupDestinationEndpoints(&conn.From)
+				endpoints := cm.LookupDestinationEndpoints(&conn.From)
 				Expect(endpoints).Should(Equal(conn.To))
 			}
 
 			By("Deleting an EventConnections CR")
-			numInitialConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
+			numInitialConnections = cm.ConnectionCount()
 
 			// Delete the CR
 			Eventually(func() error {
@@ -177,8 +170,7 @@ var _ = Describe("EventConnectionsController", func() {
 			}, timeout, interval).ShouldNot(Succeed())
 
 			By("Checking that the connection manager has 1 fewer EventConnections")
-			numConnections = eventenv.GetEventEnv().ConnectionsMgr.ConnectionCount()
-			Expect(numConnections).Should(Equal(numInitialConnections - 1))
+			Eventually(cm.ConnectionCount(), "2s", "200ms").Should(Equal(numInitialConnections - 1))
 		})
 	})
 })
