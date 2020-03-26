@@ -109,13 +109,49 @@ spec:
                         type: string
                       name:
                         type: string
+                      selector:
+                        properties:
+                          repositoryType:
+                            properties:
+                              file:
+                                type: string
+                              newVariable:
+                                type: string
+                            required:
+                            - file
+                            - newVariable
+                            type: object
+                          urlPattern:
+                            type: string
+                        type: object
                       sendTo:
                         items:
                           type: string
                         type: array
+                      variables:
+                        items:
+                          properties:
+                            name:
+                              type: string
+                            value:
+                              type: string
+                          required:
+                          - name
+                          - value
+                          type: object
+                        type: array
                     required:
-                    - input
                     - name
+                    type: object
+                type: object
+              type: array
+            repositories:
+              items:
+                properties:
+                  github:
+                    properties:
+                      secret:
+                        type: string
                     type: object
                 type: object
               type: array

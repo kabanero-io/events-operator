@@ -6,6 +6,7 @@ require (
 	github.com/go-logr/logr v0.1.0
 	github.com/go-openapi/spec v0.19.5 // indirect
 	github.com/go-openapi/swag v0.19.7 // indirect
+	github.com/golang/protobuf v1.3.5 // indirect
 	github.com/google/cel-go v0.3.2
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/kabanero-io/kabanero-operator v0.0.0-20200227142632-72b6033d63d7
@@ -14,8 +15,10 @@ require (
 	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible
 	github.com/operator-framework/operator-sdk v0.15.2
 	github.com/spf13/pflag v1.0.5
+	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e // indirect
+	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
 	google.golang.org/genproto v0.0.0-20191028173616-919d9bdd9fe6
-	gopkg.in/yaml.v2 v2.2.5
+	gopkg.in/yaml.v2 v2.2.8
 	k8s.io/api v0.17.0
 	k8s.io/apimachinery v0.17.1
 	k8s.io/client-go v12.0.0+incompatible
