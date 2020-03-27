@@ -18,34 +18,28 @@ package listeners
 
 import (
 	"fmt"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	"testing"
 	"time"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
-func TestConnections2(t *testing.T) {
+func TestQueue(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Queue Suite")
 }
 
-
 var _ = Describe("TestQueue", func() {
-
-	var (
-		queue		Queue
-		ch			chan int
-	)
+	var queue Queue
 
 	BeforeEach(func() {
 		queue = NewQueue()
-		ch = make(chan int, 1)
 	})
 
 	Context("QueueFunctions", func() {
 
-		It("It should be able to enqueue data", func() {
-
+		It("it should be able to enqueue data", func() {
 			By("adding data from an array and checking length", func() {
 				Expect(queue.Len()).Should(BeZero())
 				data := []int{1, 2, 3, 4, 5}
@@ -58,7 +52,6 @@ var _ = Describe("TestQueue", func() {
 		})
 
 		It("It should be able to dequeue data", func() {
-
 			By("adding data from an array and checking content", func() {
 				data := []int{1, 2, 3, 4, 5}
 				for i := range data {
@@ -80,11 +73,15 @@ var _ = Describe("TestQueue", func() {
 	Context("TestBlockingDequeue", func() {
 		It("should be tested using concurrency with go functions", func() {
 			const val = 5
+			ch := make(chan int, 1)
+
 			go func() {
 				fmt.Print("Waiting for element to be enqueued\n")
 				e := queue.Dequeue().(int)
 				ch <- e
+				close(ch)
 			}()
+
 			time.Sleep(100 * time.Millisecond)
 			queue.Enqueue(val)
 			e := <-ch
@@ -93,4 +90,3 @@ var _ = Describe("TestQueue", func() {
 	})
 
 })
-
