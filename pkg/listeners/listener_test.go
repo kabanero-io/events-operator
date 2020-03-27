@@ -50,7 +50,7 @@ var _ = Describe("TestListener", func() {
 		info = &listenerInfo{
 			port: 9080,
 			key: "test-key",
-			handler: func(env *eventenv.EventEnv, message map[string]interface{}, key string, url *url.URL) error {
+			handler: func(env *eventenv.EventEnv, header map[string][]string, body map[string]interface{}, key string, url *url.URL) error {
 				return nil
 			},
 			env: nil,
