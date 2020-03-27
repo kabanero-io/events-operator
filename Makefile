@@ -68,14 +68,4 @@ tidy:
 	go mod tidy -v
 
 test:
-	go test ./...
-
-operator-tests:
-	@ginkgo -r -v --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --compilers=2 pkg/controller
-
-unit-tests:
-	#go test -v -tags=unit_test ./...
-	@echo "unit tests passed"
-
-e2e-tests:
-	@echo "e2e tests passed"
+	@ginkgo -r -v --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --compilers=2 pkg

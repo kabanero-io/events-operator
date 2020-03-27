@@ -1,30 +1,43 @@
-// +build unit_test
-
 package managers
 
 import (
+	"testing"
+
 	"github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
+
 func TestEventManager(t *testing.T) {
-	mgr := NewEventManager()
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Event Manager Suite")
+}
+
+var _ = Describe("TestEvbentManager", func() {
+	var mgr *EventManager
+
+	BeforeEach(func() {
+		mgr = NewEventManager()
+	})
+
 	assignStatement := "sendEvent(dest1, message.body, message.header)"
 	filterStatement := `outHeader = filter(inHeader, "key.startsWith(\"X-Github\") || key == \"X-Hub-Signature\"")`
 
 	mediator := &v1alpha1.EventMediator{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "events.kabanero.io/v1alpha1",
-			Kind: "EventMediator",
+			Kind:       "EventMediator",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
-			Name: "event-mediator-1",
+			Name:      "event-mediator-1",
 		},
 		Spec: v1alpha1.EventMediatorSpec{
 			ListenerPort: 9443,
-			CreateRoute: true,
+			CreateRoute:  true,
 			Mediations: &[]v1alpha1.MediationsImpl{
 				{
 					Mediation: &v1alpha1.EventMediationImpl{
@@ -40,8 +53,8 @@ func TestEventManager(t *testing.T) {
 				},
 				{
 					Function: &v1alpha1.EventFunctionImpl{
-						Name: "filterGitHubHeader",
-						Input: "inHeader",
+						Name:   "filterGitHubHeader",
+						Input:  "inHeader",
 						Output: "outHeader",
 						Body: []v1alpha1.EventStatement{
 							{
@@ -53,16 +66,14 @@ func TestEventManager(t *testing.T) {
 			},
 		},
 	}
-	key := v1alpha1.MediatorHashKey(mediator)
-	mgr.AddEventMediator(mediator)
 
-	// Try to retrieve the event mediator
-	if em := mgr.GetMediator(key); em == nil {
-		t.Fatalf("expected to find an event mediator with key '%s'", key)
-	}
-
-	// Verify that there is only one mediator manager
-	if mgrs := mgr.GetMediatorManagers(); len(mgrs) != 1 {
-		t.Fatalf("expected to only find 1 mediator manager, but found %v: %v", len(mgrs), mgrs)
-	}
-}
+	Context("EventManager", func() {
+		It("should add an EventMediator successfully", func() {
+			numInitialManagers := len(mgr.GetMediatorManagers())
+			key := v1alpha1.MediatorHashKey(mediator)
+			mgr.AddEventMediator(mediator)
+			Expect(mgr.GetMediator(key)).ToNot(BeNil())
+			Expect(len(mgr.GetMediatorManagers())).Should(Equal(numInitialManagers + 1))
+		})
+	})
+})
