@@ -1,5 +1,3 @@
-// +build unit_test
-
 /*
 Copyright 2020 IBM Corporation
 
@@ -19,53 +17,76 @@ limitations under the License.
 package listeners
 
 import (
+	"fmt"
 	"testing"
 	"time"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 func TestQueue(t *testing.T) {
-	q := NewQueue()
-
-	data := []int{1, 2, 3, 4, 5}
-
-	for i := range data {
-		q.Enqueue(i)
-	}
-
-	if q.Len() != len(data) {
-		t.Errorf("expected queue to have %d items but has %d items", len(data), q.Len())
-	}
-
-	for i := range data {
-		e := q.Dequeue().(int)
-		if i != e {
-			t.Errorf("expected dequeued element to be %d; got %d", i, e)
-		}
-	}
-
-	if q.Len() != 0 {
-		t.Errorf("queue should be empty but has %d elements: ", q.Len())
-		for q.Len() != 0 {
-			e := q.Dequeue().(int)
-			t.Errorf("\t%d", e)
-		}
-	}
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Queue Suite")
 }
 
-func TestBlockingDequeue(t *testing.T) {
-	q := NewQueue()
-	ch := make(chan int, 1)
-	const val= 5
-	go func() {
-		t.Log("Waiting for element to be enqueued")
-		e := q.Dequeue().(int)
-		ch <- e
-	}()
-	time.Sleep(100 * time.Millisecond)
-	q.Enqueue(val)
+var _ = Describe("TestQueue", func() {
+	var queue Queue
 
-	e := <-ch
-	if e != val {
-		t.Errorf("expected value %d; got %d", val, e)
-	}
-}
+	BeforeEach(func() {
+		queue = NewQueue()
+	})
+
+	Context("QueueFunctions", func() {
+
+		It("it should be able to enqueue data", func() {
+			By("adding data from an array and checking length", func() {
+				Expect(queue.Len()).Should(BeZero())
+				data := []int{1, 2, 3, 4, 5}
+				for i := range data {
+					queue.Enqueue(i)
+				}
+				Expect(len(data)).Should(Equal(queue.Len()))
+			})
+
+		})
+
+		It("It should be able to dequeue data", func() {
+			By("adding data from an array and checking content", func() {
+				data := []int{1, 2, 3, 4, 5}
+				for i := range data {
+					queue.Enqueue(data[i])
+				}
+				res := [5]int{}
+				i := 0
+				for queue.Len() != 0 {
+					val := queue.Dequeue()
+					res[i] = val.(int)
+					i++
+				}
+				Expect(res).Should(Equal([5]int{1, 2, 3, 4, 5}))
+			})
+		})
+
+	})
+
+	Context("TestBlockingDequeue", func() {
+		It("should be tested using concurrency with go functions", func() {
+			const val = 5
+			ch := make(chan int, 1)
+
+			go func() {
+				fmt.Print("Waiting for element to be enqueued\n")
+				e := queue.Dequeue().(int)
+				ch <- e
+				close(ch)
+			}()
+
+			time.Sleep(100 * time.Millisecond)
+			queue.Enqueue(val)
+			e := <-ch
+			Expect(e).Should(Equal(val))
+		})
+	})
+
+})
