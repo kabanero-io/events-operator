@@ -87,7 +87,7 @@ type EventMediationSelector struct {
 
 type EventMediationRepositoryType struct {
     File string `json:"file"`
-    newVariable string `json:"newVariable"`
+    NewVariable string `json:"newVariable"`
 }
 
 // EventMediatorStatus defines the observed state of EventMediator

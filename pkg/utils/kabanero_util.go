@@ -17,15 +17,17 @@ limitations under the License.
 package utils
 
 import (
+    "context"
 	"fmt"
 	"github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
 	"k8s.io/client-go/rest"
 	"net/url"
 
 	//"io/ioutil"
-	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+ 	corev1 "k8s.io/api/core/v1"
+	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	// "k8s.io/client-go/kubernetes"
+    "sigs.k8s.io/controller-runtime/pkg/client"
 	// "k8s.io/client-go/rest"
 	"k8s.io/klog"
 	// "net/url"
@@ -138,16 +140,22 @@ GetGitHubSecret will return the username and token of a secret whose annotation'
 Note that a secret with the `kabanero.io/git-*` annotation is preferred over one with `tekton.dev/git-*`.
 Return: username, token, error
 */
-func GetGitHubSecret(client *kubernetes.Clientset, namespace string, repoURL string) (string, string, error) {
+func GetGitHubSecret(kubeClient client.Client, namespace string, repoURL string) (string, string, error) {
 	// TODO: Change to controller pattern and cache the secrets.
 	if klog.V(8) {
 		klog.Infof("GetGitHubSecret namespace: %s, repoURL: %s", namespace, repoURL)
 	}
 
+    /*
 	secrets, err := client.CoreV1().Secrets(namespace).List(metav1.ListOptions{})
+    */
+    secrets := &corev1.SecretList{}
+    options := []client.ListOption{client.InNamespace(GetKabaneroNamespace())}
+    err := kubeClient.List(context.Background(), secrets, options...)
 	if err != nil {
 		return "", "", err
 	}
+
 
 	secret := getGitHubSecretForRepo(secrets, repoURL)
 	if secret == nil {
@@ -167,8 +175,8 @@ func GetGitHubSecret(client *kubernetes.Clientset, namespace string, repoURL str
 	return string(username), string(token), nil
 }
 
-func getGitHubSecretForRepo(secrets *v1.SecretList, repoURL string) *v1.Secret {
-	var tknSecret *v1.Secret
+func getGitHubSecretForRepo(secrets *corev1.SecretList, repoURL string) *corev1.Secret {
+	var tknSecret *corev1.Secret
 	for i, secret := range secrets.Items {
 		for key, val := range secret.Annotations {
 			if strings.HasPrefix(key, "tekton.dev/git-") && strings.HasPrefix(repoURL, val) {

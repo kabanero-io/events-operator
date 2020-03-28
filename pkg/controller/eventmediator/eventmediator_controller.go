@@ -7,10 +7,12 @@ import (
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
 	"github.com/kabanero-io/events-operator/pkg/eventcel"
+    "github.com/kabanero-io/events-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
     appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    // "k8s.io/client-go/kubernetes"
 	"k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -494,6 +496,72 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
     return false
 }
 
+/* Check if the mediation should be used to process this event
+  Input:
+       mediationImpl: the mediation to match
+       body: the incoming message body
+       header: the header of the message
+       path: the path component of the incoming request
+       kubeClient: kubernetes client
+  Return 
+   error: error message if not nil
+   bool: true if mediation should be used. A mediation matches if :
+      - A selector is not present, and the name of the mediation matches the path
+      - A selector is present, and 
+          - the urlPattern, if specified, matches the path. If not specified, the name of the mediation matches the path.
+          - the repository marker file, if specified, is found. 
+   bool: true if repository marker file is specified
+   map[string]interface{}: content of the repository marker file, if the repository marker file is specified and exists.  An error message is returned if the marker file is specified, but there is a problem in locating and reading it.
+   
+*/
+func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
+    body map[string]interface{}, path string, kubeClient client.Client) (error, bool, bool, map[string]interface{}) {
+
+    emptyMap := make(map[string]interface{})
+    if mediationImpl.Selector == nil {
+        if  mediationImpl.Name == path {
+            return nil, true, false, emptyMap
+        }
+    } else {
+        selector := mediationImpl.Selector
+        urlPatternMatch := false
+        if selector.UrlPattern == ""  {
+            urlPatternMatch = mediationImpl.Name == path
+        }  else {
+            urlPatternMatch = selector.UrlPattern == path
+        }
+
+        if !urlPatternMatch {
+            return nil, false, false, emptyMap
+        }
+
+        repositoryType := selector.RepositoryType
+        if repositoryType == nil {
+            return nil, true, false, emptyMap
+        }
+
+        if repositoryType.NewVariable == "" {
+            return fmt.Errorf("newVariable not specified for Selector of Mediation %v", mediationImpl.Name), false, false, emptyMap
+        }
+
+        /* Only works with github */
+        if !utils.IsHeaderGithub(header)  {
+            return fmt.Errorf("Unable to process Non-github message for mediation %v", mediationImpl.Name), false, false, emptyMap
+        }
+
+        yaml, exists, err := utils.DownloadYAML(kubeClient, header, body, repositoryType.File)
+        if err != nil {
+             // error reading the yaml
+             return  err, false, true, emptyMap
+        }
+        if !exists{
+            // file does not exist
+            return nil, false, true, emptyMap
+        }
+        return nil, true, true, yaml
+    }
+    return nil, false, false, emptyMap
+}
 
 func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string, url *url.URL) error {
     klog.Infof("In processMessage message: %v, key: %v, url: %v, url path %v", message, key, url, url.Path)
@@ -513,19 +581,47 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
          return nil
     }
 
+    headerInterf, hasHeader  := message["header"]
+    if !hasHeader {
+        klog.Info("Message has no header")
+        return nil
+    }
+    header, ok := headerInterf.(map[string][]string)
+    if !ok {
+        klog.Info("Message header not map[string][]string")
+        return nil
+    }
+
+    bodyInterf, hasBody  := message["body"]
+    if  !hasBody {
+        klog.Info("Message has no body")
+        return nil
+    }
+
+    body, ok := bodyInterf.(map[string]interface{})
+    if !ok {
+        klog.Info("Message body not map[string]interface{}")
+        return nil
+    }
+
     for _, mediationsImpl := range *mediator.Spec.Mediations {
          if  mediationsImpl.Mediation != nil {
               eventMediationImpl := mediationsImpl.Mediation
-              if eventMediationImpl.Name == path {
+              err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, header , body, path, env.Client)
+              if err != nil {
+                  klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
+                  return err
+              }
+              if matches {
                   /* process the message */
-                  klog.Infof("Processing mediation %v", path)
+                  klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
                   processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                  _, err := processor.ProcessMessage(message, eventMediationImpl)
+                  _, err := processor.ProcessMessage(message, eventMediationImpl, hasRepoType, repoTypeValue)
                   if err != nil {
                       klog.Errorf("Error processing mediation %v, error: %v", path, err)
                   }
                   return err
-               }
+              }
          }
     }
 

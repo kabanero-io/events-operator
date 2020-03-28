@@ -389,13 +389,20 @@ func (p *Processor) parseTrigger(trigger map[interface{}]interface{}) ([]string,
 }
 */
 
-// ProcessMessage processes an event message.
-func (p *Processor) ProcessMessage(message map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl) ([]map[string]interface{}, error) {
+/* ProcessMessage processes an event message.
+Input:
+    message: incoming message
+    mediation: mediation to process the message
+    hasRepoType: true if RepositoryType is specified for the mediation
+    repoTypeValue: the value of the yaml file specified by the RepositoryType
+*/
+func (p *Processor) ProcessMessage(message map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl, 
+    hasRepoType bool, repoTypeValue map[string]interface{} ) ([]map[string]interface{}, error) {
     klog.Infof("Entering Processor.ProcessMessage for mediation %v,message: %v", mediation.Name, mediation)
 	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
 	savedVariables := make([]map[string]interface{}, 0)
-    env, variables, err := p.initializeCELEnv(message, mediation.Input, mediation.SendTo)
+    env, variables, err := p.initializeCELEnv(message, mediation, hasRepoType, repoTypeValue)
 	if err != nil {
 		return nil, err
 	}
@@ -651,17 +658,24 @@ func (p *Processor) initializeEmptyCELEnv() (cel.Env, error) {
 }
 
 /* Get initial CEL environment
+  message: incoming message
+  mediationImpl: the mediation to process the message
+  hasRepoType: true of RepositoryType specified
+  repoTypeValue: value of the repository type 
 Return: cel.Env: the CEL environment
 	map[string]interface{}: variables used during substitution
     inputVariableName name of input variable, to be bound to message
     sendTo: name of destinations
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariableName string, sendTo []string) (cel.Env, map[string]interface{}, error) {
+func (p *Processor) initializeCELEnv(message map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}) (cel.Env, map[string]interface{}, error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
 	}
+
+    inputVariableName := mediationImpl.Input
+    sendTo := mediationImpl.SendTo
 
 	/* initialize empty CEL environment with additional functions */
 	env, err := p.initializeEmptyCELEnv()
@@ -687,6 +701,29 @@ func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariab
        }
 	   variables[dest] = dest
     }
+
+    if hasRepoType {
+       /* set the value of repository type variable */
+       data, err := json.Marshal(repoTypeValue)
+       if err != nil {
+           return nil, nil, err
+       }
+       env, err = p.setOneVariable(env, mediationImpl.Selector.RepositoryType.NewVariable, string(data), variables)
+       if  err != nil {
+           return nil, nil, err
+       }
+    }
+
+    if mediationImpl.Variables != nil {
+       /* Set all additional variables */
+       for _, variable := range *mediationImpl.Variables  {
+           env, err = p.setOneVariable(env, variable.Name, variable.Value, variables)
+           if  err != nil {
+               return nil, nil, err
+           }
+       }
+    }
+
 
 	return env, variables, nil
 }

@@ -20,7 +20,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/go-github/github"
-	"k8s.io/client-go/kubernetes"
+	// "k8s.io/client-go/kubernetes"
+    "sigs.k8s.io/controller-runtime/pkg/client"
 	"k8s.io/klog"
 	"net/http"
 )
@@ -120,7 +121,7 @@ DownloadYAML Downloads a YAML file from a git repository.
   header: HTTP header from webhook
   bodyMap: HTTP  message body from webhook
 */
-func DownloadYAML(kubeClient *kubernetes.Clientset, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
+func DownloadYAML(kubeClient client.Client, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
 
 	hostHeader, isEnterprise := header[http.CanonicalHeaderKey("x-github-enterprise-host")]
 	var host string
@@ -224,4 +225,11 @@ func DownloadFileFromGithub(owner, repository, fileName, ref, githubURL, user, t
 		return nil, false, fmt.Errorf("unable to download %v/%v/%v, http error %v", owner, repository, fileName, resp.Response.Status)
 	}
 
+}
+
+/* Return true if header is from Github event */
+func IsHeaderGithub(header map[string][]string) bool {
+
+    _, ok := header["X-Github-Event"]
+    return ok
 }
