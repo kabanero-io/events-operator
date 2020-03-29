@@ -64,8 +64,8 @@ spec:
                                 type: boolean
                               url:
                                 type: string
-                            required:
-                            - url
+                              urlExpression:
+                                type: string
                             type: object
                           type: array
                       type: object

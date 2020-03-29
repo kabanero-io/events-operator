@@ -121,6 +121,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	    if err != nil {
 		    return err
         }
+    } else {
+        /* watch for secrets */
+        err = c.Watch(
+        &source.Kind{Type: &corev1.Secret{}},
+        &handler.EnqueueRequestForObject{ }, controllerPredicate)
+	    if err != nil {
+		    return err
+        }
     }
 
 	return nil
@@ -563,8 +571,8 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
     return nil, false, false, emptyMap
 }
 
-func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string, url *url.URL) error {
-    klog.Infof("In processMessage message: %v, key: %v, url: %v, url path %v", message, key, url, url.Path)
+func processMessage(env *eventenv.EventEnv, header map[string][]string, body map[string]interface{}, key string, url *url.URL) error {
+    klog.Infof("In processMessage header: %v, body: %v, key: %v, url: %v, url path %v", header, body, key, url, url.Path)
     path := url.Path
     if strings.HasPrefix(path, "/") {
         path = path[1:]
@@ -581,29 +589,6 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
          return nil
     }
 
-    headerInterf, hasHeader  := message["header"]
-    if !hasHeader {
-        klog.Info("Message has no header")
-        return nil
-    }
-    header, ok := headerInterf.(map[string][]string)
-    if !ok {
-        klog.Info("Message header not map[string][]string")
-        return nil
-    }
-
-    bodyInterf, hasBody  := message["body"]
-    if  !hasBody {
-        klog.Info("Message has no body")
-        return nil
-    }
-
-    body, ok := bodyInterf.(map[string]interface{})
-    if !ok {
-        klog.Info("Message body not map[string]interface{}")
-        return nil
-    }
-
     for _, mediationsImpl := range *mediator.Spec.Mediations {
          if  mediationsImpl.Mediation != nil {
               eventMediationImpl := mediationsImpl.Mediation
@@ -616,7 +601,7 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
                   /* process the message */
                   klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
                   processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                  _, err := processor.ProcessMessage(message, eventMediationImpl, hasRepoType, repoTypeValue)
+                  err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue)
                   if err != nil {
                       klog.Errorf("Error processing mediation %v, error: %v", path, err)
                   }
@@ -647,9 +632,9 @@ func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator
     }
 }
 
-func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.EventMediator, mediationName string) func(dest string, buf []byte, header map[string][]string) error {
+func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.EventMediator, mediationName string) func(processor *eventcel.Processor, dest string, buf []byte, header map[string][]string) error {
 
-    return func(destination string, buf[]byte, header map[string][]string) error {
+    return func(processor *eventcel.Processor, destination string, buf[]byte, header map[string][]string) error {
         connectionsMgr  := env.ConnectionsMgr
         endpoint := &eventsv1alpha1.EventSourceEndpoint {
              Mediator: &eventsv1alpha1.EventMediatorSourceEndpoint {
@@ -664,8 +649,19 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
              if dest.Https != nil {
                  for _, https := range *dest.Https {
                      timeout, _ := time.ParseDuration("5s")
-                     klog.Infof("generateSendEventHandler: sending emssage to %v", https.Url)
-                     err := sendMessage(https.Url, https.Insecure, timeout,  buf, header)
+                     var url string
+                     var err error
+                     if https.Url  != nil {
+                         url = *https.Url
+                     } else if https.UrlExpression != nil {
+                         url, err = processor.EvaluateString(*https.UrlExpression)
+                         if err != nil {
+                             return err
+                         }
+                     } else {
+                     }
+                     klog.Infof("generateSendEventHandler: sending emssage to %v", url)
+                     err = sendMessage(url, https.Insecure, timeout,  buf, header)
                      if err != nil  {
                          /* TODO: better way to handle errors */
                          klog.Errorf("generateSendEventHandler: error sending message: %v", err)

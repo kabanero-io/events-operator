@@ -146,6 +146,15 @@ const (
 	EVENTTRIGGERS = "eventTriggers"
 	SYSTEMERROR   = "systemError"
 	FUNCTIONS     = "functions"
+    HTML_URL      = "html_url"
+
+    APPSODY_CONFIG_YAML = ".appsody-config.yaml"
+    WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE = "body.webhooks-tekton-git-server"
+    WEBHOOKS_TEKTON_GIT_ORG_VARIABLE = "body.webhooks-tekton-git-org"
+    WEBHOOKS_TEKTON_GIT_REPO_VARIABLE = "body.webhooks-tekton-git-repo"
+    WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE = "body.webhooks-tekton-event-type"
+    WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
+
 )
 
 const (
@@ -235,7 +244,7 @@ type EventTriggerDefinition struct {
 /* Handler to find event function given function name */
 type GetEventFunctionHandler func(name string) *eventsv1alpha1.EventFunctionImpl
 
-type SendEventHandler func(dest string, buf []byte, header map[string][]string) error
+type SendEventHandler func(processor *Processor, dest string, buf []byte, header map[string][]string) error
 
 // Processor contains the event trigger definition and the file it was loaded from
 type Processor struct {
@@ -245,6 +254,8 @@ type Processor struct {
 	// triggerDir       string // directory where trigger file is stored
 	additionalFuncDecls cel.EnvOption
 	additionalFuncs     cel.ProgramOption
+    variables map[string]interface{}
+    env cel.Env
 }
 
 // NewProcessor creates a new trigger processor.
@@ -252,6 +263,7 @@ func NewProcessor( functionHandler GetEventFunctionHandler, sendHandler SendEven
 	p := &Processor{
         getFunctionHandler: functionHandler,
         sendEventHandler: sendHandler,
+        variables: make(map[string]interface{}),
 	}
 	p.initCELFuncs()
     return p
@@ -391,38 +403,38 @@ func (p *Processor) parseTrigger(trigger map[interface{}]interface{}) ([]string,
 
 /* ProcessMessage processes an event message.
 Input:
-    message: incoming message
+    header: header of message
+    body: body of message
     mediation: mediation to process the message
     hasRepoType: true if RepositoryType is specified for the mediation
     repoTypeValue: the value of the yaml file specified by the RepositoryType
 */
-func (p *Processor) ProcessMessage(message map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl, 
-    hasRepoType bool, repoTypeValue map[string]interface{} ) ([]map[string]interface{}, error) {
+func (p *Processor) ProcessMessage(header map[string][]string, body map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl, 
+    hasRepoType bool, repoTypeValue map[string]interface{} ) error {
     klog.Infof("Entering Processor.ProcessMessage for mediation %v,message: %v", mediation.Name, mediation)
 	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
-	savedVariables := make([]map[string]interface{}, 0)
-    env, variables, err := p.initializeCELEnv(message, mediation, hasRepoType, repoTypeValue)
+    var err error
+    p.env, p.variables, err = p.initializeCELEnv(header, body, mediation, hasRepoType, repoTypeValue)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if klog.V(5) {
 		klog.Infof("ProcessMessage after initializeCELEnv")
 	}
 
 	depth := 1
-	_, err = p.evalEventStatementArray(env, variables, mediation.Body, depth)
+	_, err = p.evalEventStatementArray(p.env, p.variables, mediation.Body, depth)
 	if err != nil {
 		klog.Errorf("Error evaluating mediation %v: ERROR MESSAGE: %v", mediation, err)
-		return nil, err
+		return err
 	}
 
 	if klog.V(5) {
 		klog.Infof("ProcessMessage after evalEventStatementArray")
 	}
-	savedVariables = append(savedVariables, variables)
 
-	return savedVariables, nil
+	return  nil
 }
 
 /* Eval body  Array
@@ -657,8 +669,9 @@ func (p *Processor) initializeEmptyCELEnv() (cel.Env, error) {
 	return cel.NewEnv(additionalFuncs)
 }
 
-/* Get initial CEL environment
-  message: incoming message
+/* Get initial CEL environment, and initialize variables, including checking for appsody repository and 
+setting github and Tekton listener related variables.
+  header, body: incoming message
   mediationImpl: the mediation to process the message
   hasRepoType: true of RepositoryType specified
   repoTypeValue: value of the repository type 
@@ -668,13 +681,13 @@ Return: cel.Env: the CEL environment
     sendTo: name of destinations
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(message map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}) (cel.Env, map[string]interface{}, error) {
+func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}) (cel.Env, map[string]interface{}, error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
 	}
 
-    inputVariableName := mediationImpl.Input
+    // inputVariableName := mediationImpl.Input
     sendTo := mediationImpl.SendTo
 
 	/* initialize empty CEL environment with additional functions */
@@ -684,13 +697,22 @@ func (p *Processor) initializeCELEnv(message map[string]interface{}, mediationIm
 	}
 
 	variables := make(map[string]interface{})
-	ident := decls.NewIdent(inputVariableName, decls.NewMapType(decls.String, decls.Any), nil)
+
+	ident := decls.NewIdent(BODY, decls.NewMapType(decls.String, decls.Any), nil)
 	env, err = env.Extend(cel.Declarations(ident))
 	if err != nil {
 		return nil, nil, err
 	}
 	/* Add message as a new variable */
-	variables[inputVariableName] = message
+	variables[BODY] = body
+
+	ident = decls.NewIdent(HEADER, decls.NewMapType(decls.String, decls.Any), nil)
+	env, err = env.Extend(cel.Declarations(ident))
+	if err != nil {
+		return nil, nil, err
+	}
+	/* Add header as a new variable */
+	variables[HEADER] = header
 
     /* set the destination variables */
     for _, dest := range sendTo {
@@ -712,6 +734,47 @@ func (p *Processor) initializeCELEnv(message map[string]interface{}, mediationIm
        if  err != nil {
            return nil, nil, err
        }
+
+       if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
+           /* evaluate pre-defined variables for appsody. body.html_url */
+           htmlUrl , exists := body[HTML_URL]
+           if ( exists ) {
+               url, ok := htmlUrl.(string)
+               if !ok {
+                   return nil, nil, fmt.Errorf("body.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
+               }
+
+               server, org, repo, err :=  utils.ParseGithubURL(url)
+               if err != nil {
+                   return nil, nil, err
+               }
+
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE,  "\"" + server  + "\"", variables)
+               if  err != nil {
+                  return nil, nil, err
+               }
+
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_ORG_VARIABLE,  "\"" + org  + "\"", variables)
+               if  err != nil {
+                  return nil, nil, err
+               }
+
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_REPO_VARIABLE,  "\"" + repo  + "\"", variables)
+               if  err != nil {
+                  return nil, nil, err
+               }
+           }
+
+           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE,  "header[\"X-Github-Event\"][0]", variables)
+           if  err != nil {
+              return nil, nil, err
+           }
+           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body.webhooks-tekton-event-type == \"pull_request\"", variables)
+           if  err != nil {
+              return nil, nil, err
+           }
+
+       }
     }
 
     if mediationImpl.Variables != nil {
@@ -726,6 +789,41 @@ func (p *Processor) initializeCELEnv(message map[string]interface{}, mediationIm
 
 
 	return env, variables, nil
+}
+
+/* Evaluate an expressions that should result in a string
+*/
+func (p *Processor) EvaluateString(val string) (string, error) {
+
+	val = strings.Trim(val, " ")
+	parsed, issues := p.env.Parse(val)
+	if issues != nil && issues.Err() != nil {
+		return "", fmt.Errorf("EvaluteString: parsing error for expression %s, error: %v", val, issues.Err())
+	}
+	checked, issues := p.env.Check(parsed)
+	if issues != nil && issues.Err() != nil {
+		return "", fmt.Errorf("EvaluteString: CEL check error for expresion %s, error: %v", val, issues.Err())
+	}
+	prg, err := p.env.Program(checked, p.getAdditionalCELFuncs())
+	if err != nil {
+		return "", fmt.Errorf("EvaluteString: CEL program error for expression %s, error: %v", val, err)
+	}
+	// out, details, err := prg.Eval(variables)
+	out, _, err := prg.Eval(p.variables)
+	if err != nil {
+		return "", fmt.Errorf("EvaluteString: CEL Eval error for expression %s, error: %v", val, err)
+	}
+
+	if klog.V(3) {
+		klog.Infof("EvaluteString: After evaluating expression %s, value type: %T, value: %v\n", val, out.Type().TypeName(), out.Value())
+	}
+
+    stringval, ok := out.Value().(string)
+    if !ok {
+		return "", fmt.Errorf("EvaluteString: unable to cast expression %s, value %v into string",  val, out.Value())
+    }
+
+    return stringval, nil
 }
 
 func (p *Processor) setOneVariable(env cel.Env, name string, val string, variables map[string]interface{}) (cel.Env, error) {
@@ -1830,8 +1928,8 @@ func convertToHeaderMap(value interface{}) (map[string][]string, error) {
 
 /* implementation of sendEvent
    destination string: where to send the event
-   message Any: JSON message
-   context Any: optional context for the event, such as header
+   body  Any: JSON message body
+   header Any: header for the emssage
    Return string : empty if OK, otherwise, error message
 */
 // func sendEventCEL(destination ref.Val, message ref.Val, context ref.Val) ref.Val
@@ -1848,23 +1946,23 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 
 	destination := refs[0]
-	message := refs[1]
-	context := refs[2]
+	body := refs[1]
+	header := refs[2]
 
 	if klog.V(6) {
-		klog.Infof("sendEventCEL first param: %v, second param: %v", destination, message)
+		klog.Infof("sendEventCEL first param: %v, second param: %v", destination, body)
 	}
 
-	if message.Value() == nil {
+	if body.Value() == nil {
 		klog.Infof("sendEventCEL  message is nil")
-		return types.ValOrErr(message, "unexpected null message parameter passed to function sendEvent.")
+		return types.ValOrErr(body, "unexpected null message parameter passed to function sendEvent.")
 	}
 
 	if destination.Value() == nil {
 		klog.Infof("sendEventCEL destination is nil")
 		return types.ValOrErr(destination, "unexpected null destination parameter passed to function sendEvent.")
 	}
-	klog.Infof("sendEventCEL first param type: %v, second param type: %v", destination.Type(), message.Type())
+	klog.Infof("sendEventCEL first param type: %v, second param type: %v", destination.Type(), body.Type())
 
 	dest, ok := destination.Value().(string)
 	if !ok {
@@ -1872,7 +1970,7 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 		return types.ValOrErr(destination, "unexpected type '%v' passed as destination parameter to function sendEventCEL. It should be string", destination.Type())
 	}
 
-	value := message.Value()
+	value := body.Value()
 	buf, err := json.Marshal(value)
 	if err != nil {
 		klog.Errorf("Unable to marshall as JSON: %v, type %T", value, value)
@@ -1880,16 +1978,16 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 
 
-	header := make(map[string][]string)
+	headerValue := make(map[string][]string)
 	if numParams == 3 {
-		header, err = convertToHeaderMap(context.Value())
+		headerValue, err = convertToHeaderMap(header.Value())
 		if err != nil {
-			return types.ValOrErr(context, "sendEventCEL unable to convert header to map[string][]string: %v", context)
+			return types.ValOrErr(header, "sendEventCEL unable to convert header to map[string][]string: %v", header)
 		}
 	}
 
     if klog.V(6) {
-		klog.Infof("Sending buffer: %v, header: %v", buf, header)
+		klog.Infof("Sending buffer: %v, header: %v", buf, headerValue)
     }
 
 /*
@@ -1899,7 +1997,7 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 */
 
-	err = p.sendEventHandler(dest, buf, header)
+	err = p.sendEventHandler(p, dest, buf, headerValue)
 	if err != nil {
 		klog.Errorf("sendEvent unable to send event to destination %v: '%v'", dest, err)
 		return types.ValOrErr(nil, "sendEventCEL: unable to send event: %v", err)

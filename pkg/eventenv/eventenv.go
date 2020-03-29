@@ -12,7 +12,7 @@ const (
      MEDIATOR_NAME_KEY = "MEDIATOR-NAME" // environment variable. If not set, we're running as operator.
 )
 
-type  ListenerHandler func(env *EventEnv, message map[string]interface{}, key string, url *url.URL) error
+type  ListenerHandler func(env *EventEnv, header map[string][]string, body map[string]interface{}, key string, url *url.URL) error
 
 type ListenerManager interface {
     /* Create a new TLS listener with TLS. Call the handler on every message received */

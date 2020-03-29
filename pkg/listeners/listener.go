@@ -58,7 +58,8 @@ type ListenerManagerDefault struct {
 }
 
 type queueElem struct {
-    message map[string]interface{}
+    header map[string][]string
+    body map[string]interface{}
     url *url.URL
     info *listenerInfo
 }
@@ -161,8 +162,8 @@ func processQueueWorker(queue Queue) {
 	for {
 		interf := queue.Dequeue()
 		qElem  := interf.(*queueElem)
-		klog.Infof("Worker thread processing url: %v, message: %v", qElem.url.String(), qElem.message)
-		err := (qElem.info.handler)(qElem.info.env, qElem.message, qElem.info.key, qElem.url)
+		klog.Infof("Worker thread processing url: %v, header: %v, body: %v", qElem.url.String(), qElem.header, qElem.body)
+		err := (qElem.info.handler)(qElem.info.env, qElem.header, qElem.body, qElem.info.key, qElem.url)
 		if err != nil {
 			klog.Errorf("Worker thread error: url: %v, error: %v", qElem.url.String(), err)
 			return
@@ -214,12 +215,10 @@ func listenerHandler(listener *listenerInfo) http.HandlerFunc {
 			klog.Info("Request did not have a body")
 		}
 
-		message := make(map[string]interface{})
-		message[HEADER] = map[string][]string(header)
-		message[BODY] = bodyMap
 
 		listener.queue.Enqueue(&queueElem {
-			message : message,
+			header: map[string][]string(header),
+            body: bodyMap,
 			url: req.URL,
 			info: listener,
 		})

@@ -7,7 +7,6 @@ spec:
   mediations:
     - mediation:
         name:  mediation1
-        input: message
         sendTo: [ "dest"  ]
         body:
-          - = : 'sendEvent(dest, message.body, message.header)'
+          - = : 'sendEvent(dest, body, header)'

@@ -39,7 +39,8 @@ type EventDestinationEndpoint struct {
 }
 
 type HttpsEndpoint  struct {
-    Url string `json:"url"`
+    Url *string `json:"url,omitempty"` // uninterpreted URL
+    UrlExpression *string `json:"urlExpression,omitempty"` // evaluate url as expression first
     Insecure bool `json:"insecure,omitempty"`
 }
 
