@@ -3,13 +3,14 @@ module github.com/kabanero-io/events-operator
 go 1.13
 
 require (
+	github.com/Masterminds/semver v1.5.0
 	github.com/go-logr/logr v0.1.0
 	github.com/go-openapi/spec v0.19.5 // indirect
 	github.com/go-openapi/swag v0.19.7 // indirect
 	github.com/golang/protobuf v1.3.5 // indirect
 	github.com/google/cel-go v0.3.2
 	github.com/google/go-github v17.0.0+incompatible
-	github.com/kabanero-io/kabanero-operator v0.0.0-20200227142632-72b6033d63d7
+	github.com/kabanero-io/kabanero-operator v0.0.0-20200330011034-66aac562dae4
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
 	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible

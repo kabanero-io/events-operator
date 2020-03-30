@@ -133,6 +133,7 @@ func main() {
         ListenerMgr: listeners.NewDefaultListenerManager(),
         IsOperator:  isOperator,
         MediatorName: mediatorName,
+        Namespace: operatorNamespace,
     }
     eventenv.InitEventEnv(env)
 

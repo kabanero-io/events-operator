@@ -1597,12 +1597,14 @@ func (p *Processor) jobIDCEL(values ...ref.Val) ref.Val {
 	return types.String(GetTimestamp())
 }
 
-/* Return next job ID */
+/* Return kabanero config */
+/*
 func (p *Processor) kabaneroConfigCEL(values ...ref.Val) ref.Val {
 	ret := make(map[string]interface{})
 	ret[NAMESPACE] = utils.GetKabaneroNamespace()
 	return types.NewDynamicMap(types.DefaultTypeAdapter, ret)
 }
+*/
 
 /* implementation of downlodYAML for CEL.
    webhookMessage: map[string]interface{} contains the original webhook message
@@ -2190,8 +2192,8 @@ func (p *Processor) initCELFuncs() {
 		decls.NewFunction("applyResources",
 			decls.NewOverload("applyResources_string_any", []*exprpb.Type{decls.String, decls.Any}, decls.String)),
 */
-		decls.NewFunction("kabaneroConfig",
-			decls.NewOverload("kabaneroConfig", []*exprpb.Type{}, decls.NewMapType(decls.String, decls.Any))),
+//		decls.NewFunction("kabaneroConfig",
+//			decls.NewOverload("kabaneroConfig", []*exprpb.Type{}, decls.NewMapType(decls.String, decls.Any))),
 		decls.NewFunction("jobID",
 			decls.NewOverload("jobID", []*exprpb.Type{}, decls.String)),
 		/*decls.NewFunction("downloadYAML",
@@ -2220,9 +2222,10 @@ func (p *Processor) initCELFuncs() {
 			Operator: "applyResources",
 			Binary:   p.applyResourcesCEL},
 */
-		&functions.Overload{
+/*		&functions.Overload{
 			Operator: "kabaneroConfig",
 			Function: p.kabaneroConfigCEL},
+*/
 		&functions.Overload{
 			Operator: "jobID",
 			Function: p.jobIDCEL},

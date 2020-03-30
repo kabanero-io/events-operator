@@ -1,5 +1,5 @@
 IMAGE ?= kabanero/events-operator
-IMAGE_TAG ?= latest
+IMAGE_TAG ?= prototype
 KUBEBUILDER_VERSION ?= 2.3.0
 OPERATOR_SDK_RELEASE_VERSION ?= v0.15.2
 OPERATOR_FLAGS = --zap-level=debug --zap-encoder=console

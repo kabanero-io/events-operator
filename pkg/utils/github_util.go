@@ -122,7 +122,7 @@ DownloadYAML Downloads a YAML file from a git repository.
   header: HTTP header from webhook
   bodyMap: HTTP  message body from webhook
 */
-func DownloadYAML(kubeClient client.Client, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
+func DownloadYAML(kubeClient client.Client, namespace string, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
 
 	hostHeader, isEnterprise := header[http.CanonicalHeaderKey("x-github-enterprise-host")]
 	var host string
@@ -139,7 +139,6 @@ func DownloadYAML(kubeClient client.Client, header map[string][]string, bodyMap 
 		return nil, false, fmt.Errorf("unable to get repository owner, name, or html_url from webhook message: %v", err)
 	}
 
-	namespace := GetKabaneroNamespace()
 	user, token, err := GetGitHubSecret(kubeClient, namespace, htmlURL)
 	if err != nil {
 		return nil, false, fmt.Errorf("unable to get user/token secret for URL %s: %v", htmlURL, err)

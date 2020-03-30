@@ -19,7 +19,8 @@ package utils
 import (
     "context"
 	"fmt"
-	"github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
+	kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
+    "github.com/Masterminds/semver"
 	"k8s.io/client-go/rest"
 	"net/url"
 
@@ -31,32 +32,38 @@ import (
 	// "k8s.io/client-go/rest"
 	"k8s.io/klog"
 	// "net/url"
-	"os"
+	//"os"
 	"strings"
 )
 
 const (
 	// KUBENAMESPACE the namespace that kabanero is running in
-	KUBENAMESPACE = "KUBE_NAMESPACE"
+//	KUBENAMESPACE = "KUBE_NAMESPACE"
 	// DEFAULTNAMESPACE the default namespace name
-	DEFAULTNAMESPACE = "kabanero"
+//	DEFAULTNAMESPACE = "kabanero"
+
+    ACTIVE = "active"
+    TEKTON_DEV = "tekton.dev"
+    EVENT_LISTENER = "EventListener"
 )
 
+/*
 var (
 	kabaneroNamespace string
 )
+*/
 
 // GetKabaneroNamespace Get namespace of where kabanero is installed
-func GetKabaneroNamespace() string {
-	if kabaneroNamespace == "" {
-		kabaneroNamespace = os.Getenv(KUBENAMESPACE)
-		if kabaneroNamespace == "" {
-			kabaneroNamespace = DEFAULTNAMESPACE
-		}
-	}
-
-	return kabaneroNamespace
-}
+//func GetKabaneroNamespace() string {
+//	if kabaneroNamespace == "" {
+//		kabaneroNamespace = os.Getenv(KUBENAMESPACE)
+//		if kabaneroNamespace == "" {
+//			kabaneroNamespace = DEFAULTNAMESPACE
+//		}
+//	}
+//
+//	return kabaneroNamespace
+//}
 
 // GetTriggerFiles returns the directory containing the retrieved trigger files.
 //func GetTriggerFiles(client rest.Interface, url *url.URL, skipChkSumVerify bool) (string, error) {
@@ -94,7 +101,7 @@ func GetKabaneroNamespace() string {
 
 // GetTriggerInfo Get the URL to trigger gzipped tar and its sha256 checksum.
 func GetTriggerInfo(client rest.Interface, namespace string) (*url.URL, string, error) {
-	kabaneroList := v1alpha2.KabaneroList{}
+	kabaneroList := kabanerov1alpha2.KabaneroList{}
 	err := client.Get().Resource(KABANEROS).Namespace(namespace).Do().Into(&kabaneroList)
 	if err != nil {
 		return nil, "", err
@@ -146,11 +153,8 @@ func GetGitHubSecret(kubeClient client.Client, namespace string, repoURL string)
 		klog.Infof("GetGitHubSecret namespace: %s, repoURL: %s", namespace, repoURL)
 	}
 
-    /*
-	secrets, err := client.CoreV1().Secrets(namespace).List(metav1.ListOptions{})
-    */
     secrets := &corev1.SecretList{}
-    options := []client.ListOption{client.InNamespace(GetKabaneroNamespace())}
+    options := []client.ListOption{client.InNamespace(namespace)}
     err := kubeClient.List(context.Background(), secrets, options...)
 	if err != nil {
 		return "", "", err
@@ -207,3 +211,95 @@ func matchPrefix(str string, arrStr []string) (bool, string) {
 	}
 	return false, ""
 }
+
+func  imageMatches(repoStackImage string,  images []kabanerov1alpha2.ImageStatus) bool  {
+    for _, image := range images {
+         if image.Image == repoStackImage {
+             return true
+         }
+    }
+    return false
+}
+
+
+func findEventListener(versionStatus *kabanerov1alpha2.StackVersionStatus) string {
+    for _, pipeline := range versionStatus.Pipelines {
+        for _, activeAsset := range pipeline.ActiveAssets {
+             if activeAsset.Group == TEKTON_DEV && activeAsset.Kind == EVENT_LISTENER {
+                  /* found */
+                  return activeAsset.Name
+             }
+        }
+    }
+    return ""
+}
+
+/* 
+Return true if the version is semantically compatible with the constraint version
+*/
+func isSemanticallyCompatible(version *semver.Version, constraintVersion string ) (bool, error) {
+    constraint, err := semver.NewConstraint("^" + constraintVersion)
+    if err != nil {
+        return false, err
+    }
+    return constraint.Check(version), nil
+}
+
+/* Find the Kabanero Tekton event listener for stack 
+input:
+   kubeClient: client to API server
+   namespace: namespace to search for event listener
+   repoStackImage:  the name  of image as specified in .appsody-config.yaml. For example, "docker.io/appsody/nodejs:0.3"
+   repoStackVersion: the semantic version for the stack, as specified in .appsody-config.yaml. For example "0.3"
+Return:
+   name of listener, or "" if no match
+   exact version found
+   error : if any error occurred when matching the repository to an event listener
+*/
+func FindEventListenerForStack(kubeClient client.Client, namespace string, repoStackImage string, repoStackVersion string) (string, string, error) {
+	if klog.V(8) {
+		klog.Infof("FindEventListenerForStack namespace: %s, reposStackImage: %v, repoStackVersion: %v", namespace, repoStackImage, repoStackVersion)
+	}
+
+    stacks := &kabanerov1alpha2.StackList{}
+    options := []client.ListOption{client.InNamespace(namespace)}
+    err := kubeClient.List(context.Background(), stacks, options...) 
+    if err != nil {
+		return "", "", err
+	}
+
+    currentListener := ""
+    currentVersion, _ := semver.NewVersion("0.0.0")
+    for _, stack  := range stacks.Items {
+        status := stack.Status
+        for _, versionStatus := range status.Versions {
+           if versionStatus.Status != ACTIVE  {
+                continue
+           }
+           if  !imageMatches(repoStackImage, versionStatus.Images)  {
+               continue
+           }
+           matchedVersion, err := semver.NewVersion(versionStatus.Version)
+           if err != nil {
+                return "", "", err
+           }
+           matched, err := isSemanticallyCompatible(matchedVersion, repoStackVersion)
+           if err != nil {
+               return "", "", err
+           }
+           if !matched {
+                continue
+           }
+           matchedListener := findEventListener(&versionStatus)
+           if  matchedListener == "" {
+                 continue
+           }
+           if currentListener == "" || matchedVersion.GreaterThan(currentVersion) {
+               currentListener = matchedListener
+               currentVersion = matchedVersion
+           }
+        }
+    }
+    return currentListener, currentVersion.String(), nil
+}
+

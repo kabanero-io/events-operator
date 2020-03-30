@@ -5,6 +5,7 @@ import (
 
     routev1 "github.com/openshift/api/route/v1"
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+    kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
 	"github.com/kabanero-io/events-operator/pkg/eventcel"
     "github.com/kabanero-io/events-operator/pkg/utils"
@@ -125,6 +126,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
         /* watch for secrets */
         err = c.Watch(
         &source.Kind{Type: &corev1.Secret{}},
+        &handler.EnqueueRequestForObject{ }, controllerPredicate)
+	    if err != nil {
+		    return err
+        }
+
+        /* Watch for Stacks */
+        err = c.Watch(
+        &source.Kind{Type: &kabanerov1alpha2.Stack{}},
         &handler.EnqueueRequestForObject{ }, controllerPredicate)
 	    if err != nil {
 		    return err
@@ -523,7 +532,7 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
    
 */
 func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
-    body map[string]interface{}, path string, kubeClient client.Client) (error, bool, bool, map[string]interface{}) {
+    body map[string]interface{}, path string, kubeClient client.Client, namespace string) (error, bool, bool, map[string]interface{}) {
 
     emptyMap := make(map[string]interface{})
     if mediationImpl.Selector == nil {
@@ -557,7 +566,7 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
             return fmt.Errorf("Unable to process Non-github message for mediation %v", mediationImpl.Name), false, false, emptyMap
         }
 
-        yaml, exists, err := utils.DownloadYAML(kubeClient, header, body, repositoryType.File)
+        yaml, exists, err := utils.DownloadYAML(kubeClient, namespace, header, body, repositoryType.File)
         if err != nil {
              // error reading the yaml
              return  err, false, true, emptyMap
@@ -592,7 +601,7 @@ func processMessage(env *eventenv.EventEnv, header map[string][]string, body map
     for _, mediationsImpl := range *mediator.Spec.Mediations {
          if  mediationsImpl.Mediation != nil {
               eventMediationImpl := mediationsImpl.Mediation
-              err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, header , body, path, env.Client)
+              err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, header , body, path, env.Client, env.Namespace)
               if err != nil {
                   klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
                   return err
