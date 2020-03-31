@@ -4,6 +4,9 @@ metadata:
   name: mediator1
 spec:
   createListener: true
+  repositories:
+    - github:
+        secret: my-super-secret-secret
   mediations:
     - mediation:
         name:  mediation1
