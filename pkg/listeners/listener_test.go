@@ -44,7 +44,7 @@ var _ = Describe("TestListener", func() {
 
 	BeforeEach(func() {
 		lm = &ListenerManagerDefault{
-			listeners: make(map[int]*listenerInfo),
+			listeners: make(map[int32]*listenerInfo),
 		}
 
 		info = &listenerInfo{

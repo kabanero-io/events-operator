@@ -175,7 +175,9 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
             if instance.Spec.CreateListener {
                 port :=  getListenerPort(instance)
                 key := eventsv1alpha1.MediatorHashKey(instance)
-                err = env.ListenerMgr.NewListenerTLS(env, port, key, "", "", processMessage)
+                err = env.ListenerMgr.NewListenerTLS(env, key, processMessage, eventenv.ListenerOptions{
+                    Port: port,
+                })
                 if err != nil {
                      return reconcile.Result{}, err
                 }
