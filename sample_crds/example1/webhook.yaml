@@ -5,6 +5,9 @@ metadata:
 spec:
   createListener: true
   createRoute: true
+  #repositories:
+  #  - github:
+  #      secret: my-super-secret-secret
   mediations:
     - mediation:
         name: webhook

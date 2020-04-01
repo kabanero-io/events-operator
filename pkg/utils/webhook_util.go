@@ -232,8 +232,7 @@ func hashPayload(sigType, secret string, payload []byte) (string, error) {
 }
 
 // ValidatePayload verifies that a payload hashed with some secret matches the expected signature
-func ValidatePayload(sigType, secret, sigHash string, payload []byte) error {
-	klog.Infof("HWI validate payload: %v", string(payload))
+func ValidatePayload(sigType, sigHash, secret string, payload []byte) error {
 	hashedPayload, err := hashPayload(sigType, secret, payload)
 	if err != nil {
 		return err

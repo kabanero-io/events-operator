@@ -2,7 +2,11 @@ package eventmediator
 
 import (
 	"context"
+    "io/ioutil"
 
+    "github.com/kabanero-io/events-operator/pkg/event"
+    "github.com/kabanero-io/events-operator/pkg/listeners"
+    "github.com/kabanero-io/events-operator/pkg/utils"
     routev1 "github.com/openshift/api/route/v1"
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
@@ -25,11 +29,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
     "github.com/operator-framework/operator-sdk/pkg/k8sutil"
     "sigs.k8s.io/controller-runtime/pkg/predicate"
-    "sigs.k8s.io/controller-runtime/pkg/event"
+    k8sevent "sigs.k8s.io/controller-runtime/pkg/event"
 
     "k8s.io/klog"
     // "os"
-    "net/url"
     "net/http"
     "bytes"
     "time"
@@ -67,17 +70,17 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 
     controllerPredicate := predicate.Funcs{
-        UpdateFunc: func(e event.UpdateEvent) bool {
+        UpdateFunc: func(e k8sevent.UpdateEvent) bool {
             // Ignore status updates
-            return e.MetaOld.GetGeneration() != e.MetaNew.GetGeneration() 
+            return e.MetaOld.GetGeneration() != e.MetaNew.GetGeneration()
         },
-        CreateFunc: func(e event.CreateEvent) bool {
+        CreateFunc: func(e k8sevent.CreateEvent) bool {
             return true
         },
-        DeleteFunc: func(e event.DeleteEvent) bool {
+        DeleteFunc: func(e k8sevent.DeleteEvent) bool {
             return true
         },
-        GenericFunc: func(e event.GenericEvent) bool {
+        GenericFunc: func(e k8sevent.GenericEvent) bool {
             return true
         },
     }
@@ -163,7 +166,7 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 
     env := eventenv.GetEventEnv()
     if env.IsOperator {
-        result, err := r.reconcileOperator(request, instance, reqLogger) 
+        result, err := r.reconcileOperator(request, instance, reqLogger)
         return result, err
     } else {
         /* plain controller for one mediator */
@@ -175,12 +178,20 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
             if instance.Spec.CreateListener {
                 port :=  getListenerPort(instance)
                 key := eventsv1alpha1.MediatorHashKey(instance)
-                err = env.ListenerMgr.NewListenerTLS(env, key, processMessage, eventenv.ListenerOptions{
+                workerQueue := event.NewQueue()
+                listenerHandler, err := validateMessageHandler(key, event.EnqueueHandler(workerQueue))
+                if err != nil {
+                    return reconcile.Result{}, err
+                }
+                err = env.ListenerMgr.NewListenerTLS(listenerHandler, listeners.ListenerOptions{
                     Port: port,
                 })
                 if err != nil {
                      return reconcile.Result{}, err
                 }
+
+                // Start the queue worker
+                go event.ProcessQueueWorker(workerQueue, generateMessageHandler(env, key))
             }
         }
     }
@@ -354,7 +365,7 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
         {
              Name: eventenv.MEDIATOR_NAME_KEY,
              Value: mediator.Name,
-        }, 
+        },
         {
              Name: "POD_NAME",
              ValueFrom:  &corev1.EnvVarSource {
@@ -496,43 +507,123 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
     return false
 }
 
-
-func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string, url *url.URL) error {
-    klog.Infof("In processMessage message: %v, key: %v, url: %v, url path %v", message, key, url, url.Path)
-    path := url.Path
-    if strings.HasPrefix(path, "/") {
-        path = path[1:]
-    }
-
-    mediator := env.EventMgr.GetMediator(key)
+func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.Handler, error) {
+    mediator := eventenv.GetEventEnv().EventMgr.GetMediator(mediatorKey)
     if mediator == nil {
-        klog.Info("No meditor found")
-         // not for us
-         return nil
-    }
-    if  mediator.Spec.Mediations == nil {
-        klog.Info("No mediation within mediator")
-         return nil
+        return nil, fmt.Errorf("no mediator found with key '%s'", mediatorKey)
     }
 
-    for _, mediationsImpl := range *mediator.Spec.Mediations {
-         if  mediationsImpl.Mediation != nil {
-              eventMediationImpl := mediationsImpl.Mediation
-              if eventMediationImpl.Name == path {
-                  /* process the message */
-                  klog.Infof("Processing mediation %v", path)
-                  processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                  _, err := processor.ProcessMessage(message, eventMediationImpl)
-                  if err != nil {
-                      klog.Errorf("Error processing mediation %v, error: %v", path, err)
-                  }
-                  return err
-               }
-         }
+    // No secrets configured for this mediator, just return the normal handler
+    if mediator.Spec.Repositories == nil || len(*mediator.Spec.Repositories) == 0 {
+        return nextHandler, nil
     }
 
-    klog.Info("No matching mediation")
-    return nil
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        var eventType event.Type
+
+        // Determine event type
+        if _, ok := r.Header["X-Github-Event"]; ok {
+            eventType = event.TypeGitHub
+        } else {
+            eventType = event.TypeOther
+        }
+
+        // Handle GitHub events
+        if eventType == event.TypeGitHub {
+            if _, ok := r.Header["X-Hub-Signature"]; !ok {
+                // No signature header -- skip validation
+                nextHandler.ServeHTTP(w, r)
+                return
+            }
+
+            sigHeader := r.Header["X-Hub-Signature"]
+            sigParts := strings.SplitN(sigHeader[0], "=", 2)
+            if len(sigParts) != 2 || sigParts[0] != "sha1" {
+                klog.Errorf("X-Hub-Signature header expected to be in the format sha1=signature, got %s",
+                    sigHeader)
+                return
+            }
+            sigType := sigParts[0]
+            sig := sigParts[1]
+
+            if r.Body == nil {
+                klog.Error("unexpected empty body for event")
+                w.WriteHeader(http.StatusBadRequest)
+                return
+            }
+
+            body, err := ioutil.ReadAll(r.Body)
+            if err != nil {
+                klog.Error("unable to read body of the event")
+                w.WriteHeader(http.StatusBadRequest)
+                return
+            }
+
+            for _, repo := range *mediator.Spec.Repositories {
+                if repo.Github != nil {
+                    err = utils.ValidatePayload(sigType, sig, repo.Github.Secret, body)
+
+                    // Found a secret that validates the payload
+                    if err == nil {
+                        // XXX: Need to set a new body so the next handler can read the body too
+                        r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+                        nextHandler.ServeHTTP(w, r)
+                        return
+                    }
+                }
+            }
+
+            // X-Hub-Signature set but a valid secret is not configured. Do not process the event.
+            klog.Errorf("found X-Hub-Signature header but a valid secret is not configured -- ignoring request")
+            w.WriteHeader(http.StatusBadRequest)
+            return
+        }
+
+        // Skip validation of unknown event types
+        nextHandler.ServeHTTP(w, r)
+    }), nil
+}
+
+func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
+	return func(event *event.Event) error {
+	    message := event.Message
+	    path := event.URL.Path
+        klog.Infof("In processMessage message: %v, key: %v, url: %v, url path %v", message, key, event.URL, path)
+
+        if strings.HasPrefix(path, "/") {
+            path = path[1:]
+        }
+
+        mediator := env.EventMgr.GetMediator(key)
+        if mediator == nil {
+            klog.Info("No mediator found")
+            // not for us
+            return nil
+        }
+        if mediator.Spec.Mediations == nil {
+            klog.Info("No mediation within mediator")
+            return nil
+        }
+
+        for _, mediationsImpl := range *mediator.Spec.Mediations {
+            if mediationsImpl.Mediation != nil {
+                eventMediationImpl := mediationsImpl.Mediation
+                if eventMediationImpl.Name == path {
+                    /* process the message */
+                    klog.Infof("Processing mediation %v", path)
+                    processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator), generateSendEventHandler(env, mediator, path))
+                    _, err := processor.ProcessMessage(message, eventMediationImpl)
+                    if err != nil {
+                        klog.Errorf("Error processing mediation %v, error: %v", path, err)
+                    }
+                    return err
+                }
+            }
+        }
+
+        klog.Info("No matching mediation")
+        return nil
+    }
 }
 
 
@@ -570,7 +661,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
              if dest.Https != nil {
                  for _, https := range *dest.Https {
                      timeout, _ := time.ParseDuration("5s")
-                     klog.Infof("generateSendEventHandler: sending emssage to %v", https.Url)
+                     klog.Infof("generateSendEventHandler: sending message to %v", https.Url)
                      err := sendMessage(https.Url, https.Insecure, timeout,  buf, header)
                      if err != nil  {
                          /* TODO: better way to handle errors */
@@ -702,3 +793,4 @@ func (r *ReconcileEventMediator) reconcileRoute(request reconcile.Request, insta
 */
     return reconcile.Result{}, nil
 }
+
