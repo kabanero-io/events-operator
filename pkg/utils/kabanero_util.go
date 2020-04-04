@@ -20,7 +20,7 @@ import (
     "context"
 	"fmt"
 	kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
-    "github.com/Masterminds/semver"
+    "github.com/kabanero-io/events-operator/pkg/semverimage"
 	"k8s.io/client-go/rest"
 	"net/url"
 
@@ -234,17 +234,6 @@ func findEventListener(versionStatus *kabanerov1alpha2.StackVersionStatus) strin
     return ""
 }
 
-/* 
-Return true if the version is semantically compatible with the constraint version
-*/
-func isSemanticallyCompatible(version *semver.Version, constraintVersion string ) (bool, error) {
-    constraint, err := semver.NewConstraint("^" + constraintVersion)
-    if err != nil {
-        return false, err
-    }
-    return constraint.Check(version), nil
-}
-
 /* Find the Kabanero Tekton event listener for stack 
 input:
    kubeClient: client to API server
@@ -260,16 +249,19 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
 	if klog.V(8) {
 		klog.Infof("FindEventListenerForStack namespace: %s, reposStackImage: %v, repoStackVersion: %v", namespace, repoStackImage, repoStackVersion)
 	}
-
+    repoVersion, err := semverimage.NewVersion(repoStackVersion)
+    if err != nil {
+        return "", "", err
+    }
     stacks := &kabanerov1alpha2.StackList{}
     options := []client.ListOption{client.InNamespace(namespace)}
-    err := kubeClient.List(context.Background(), stacks, options...) 
+    err = kubeClient.List(context.Background(), stacks, options...) 
     if err != nil {
 		return "", "", err
 	}
 
     currentListener := ""
-    currentVersion, _ := semver.NewVersion("0.0.0")
+    currentVersion, _ := semverimage.NewVersion("0.0.0")
     for _, stack  := range stacks.Items {
         status := stack.Status
         for _, versionStatus := range status.Versions {
@@ -279,14 +271,11 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
            if  !imageMatches(repoStackImage, versionStatus.Images)  {
                continue
            }
-           matchedVersion, err := semver.NewVersion(versionStatus.Version)
+           matchedVersion, err := semverimage.NewVersion(versionStatus.Version)
            if err != nil {
                 return "", "", err
            }
-           matched, err := isSemanticallyCompatible(matchedVersion, repoStackVersion)
-           if err != nil {
-               return "", "", err
-           }
+           matched := repoVersion.IsCompatible(matchedVersion)
            if !matched {
                 continue
            }

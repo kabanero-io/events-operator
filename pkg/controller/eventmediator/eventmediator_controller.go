@@ -136,7 +136,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
         &source.Kind{Type: &kabanerov1alpha2.Stack{}},
         &handler.EnqueueRequestForObject{ }, controllerPredicate)
 	    if err != nil {
-		    return err
+            /* we may be running in an environment where stacks are not defined */
+            klog.Infof("Unable to watch stacks: %v", err)
         }
     }
 
@@ -610,7 +611,7 @@ func processMessage(env *eventenv.EventEnv, header map[string][]string, body map
                   /* process the message */
                   klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
                   processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                  err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue)
+                  err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client)
                   if err != nil {
                       klog.Errorf("Error processing mediation %v, error: %v", path, err)
                   }

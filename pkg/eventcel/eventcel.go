@@ -48,6 +48,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	// "k8s.io/client-go/dynamic"
 	"k8s.io/klog"
+    "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 /* Trigger file syntax
@@ -149,11 +150,14 @@ const (
     HTML_URL      = "html_url"
 
     APPSODY_CONFIG_YAML = ".appsody-config.yaml"
+    STACK = "stack"
     WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE = "body.webhooks-tekton-git-server"
     WEBHOOKS_TEKTON_GIT_ORG_VARIABLE = "body.webhooks-tekton-git-org"
     WEBHOOKS_TEKTON_GIT_REPO_VARIABLE = "body.webhooks-tekton-git-repo"
     WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE = "body.webhooks-tekton-event-type"
     WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
+    WEBHOOKS_KABANERO_TEKTON_LISTENER = "body.webhooks-kabanero-tekton-listener"
+    UNKNOWN_LISTENER = "UNKNOWN_KABAKERO_TEKTON_LISTENER"
 
 )
 
@@ -408,14 +412,16 @@ Input:
     mediation: mediation to process the message
     hasRepoType: true if RepositoryType is specified for the mediation
     repoTypeValue: the value of the yaml file specified by the RepositoryType
+    namespace: namepsace we're running
+    client: controller client
 */
 func (p *Processor) ProcessMessage(header map[string][]string, body map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl, 
-    hasRepoType bool, repoTypeValue map[string]interface{} ) error {
+    hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client ) error {
     klog.Infof("Entering Processor.ProcessMessage for mediation %v,message: %v", mediation.Name, mediation)
 	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
     var err error
-    p.env, p.variables, err = p.initializeCELEnv(header, body, mediation, hasRepoType, repoTypeValue)
+    p.env, p.variables, err = p.initializeCELEnv(header, body, mediation, hasRepoType, repoTypeValue, namespace, client)
 	if err != nil {
 		return err
 	}
@@ -675,13 +681,15 @@ setting github and Tekton listener related variables.
   mediationImpl: the mediation to process the message
   hasRepoType: true of RepositoryType specified
   repoTypeValue: value of the repository type 
+  namespace: namespace we're running in
+  client: controller client
 Return: cel.Env: the CEL environment
 	map[string]interface{}: variables used during substitution
     inputVariableName name of input variable, to be bound to message
     sendTo: name of destinations
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}) (cel.Env, map[string]interface{}, error) {
+func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client) (cel.Env, map[string]interface{}, error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
@@ -736,7 +744,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        }
 
        if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
-           /* evaluate pre-defined variables for appsody. body.html_url */
+           /* evaluate pre-defined variables for appsody.body.html_url */
            htmlUrl , exists := body[HTML_URL]
            if ( exists ) {
                url, ok := htmlUrl.(string)
@@ -774,6 +782,30 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
               return nil, nil, err
            }
 
+           stack, ok := repoTypeValue[STACK]
+           if !ok {
+               return  nil, nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
+           }
+           stackStr, ok := stack.(string)
+           if !ok {
+               return  nil, nil, fmt.Errorf("stack %v not string in appsody-configy.yaml: %v", stack, repoTypeValue)
+           }
+           components := strings.Split(stackStr, ":")
+           if len(components) != 2 {
+               return  nil, nil, fmt.Errorf("invalid stack value in appsody-configy.yaml:%v  ", stackStr)
+           }
+           listener, version, err := utils.FindEventListenerForStack(client, namespace, components[0], components[1])
+           if err != nil {
+               return nil, nil, err
+           }
+           if listener == "" {
+               listener = UNKNOWN_LISTENER
+           }
+           klog.Infof("For stack %s, found event listener %s, version: %v", stackStr, listener, version)
+           env, err = p.setOneVariable(env, WEBHOOKS_KABANERO_TEKTON_LISTENER,  "\"" + listener + "\"", variables)
+           if  err != nil {
+              return nil, nil, err
+           }
        }
     }
 
