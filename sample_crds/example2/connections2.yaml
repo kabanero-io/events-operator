@@ -1,0 +1,15 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: connections2
+spec:
+  connections:
+    - from: 
+        mediator:
+            name: webhook2
+            mediation: webhook
+            destination: dest
+      to:
+        - https:
+            - url: https://mediator2-1/mediation1
+              insecure: true

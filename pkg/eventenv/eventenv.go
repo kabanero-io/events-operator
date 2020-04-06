@@ -30,6 +30,7 @@ type EventEnv  struct {
     MediatorName string // Kubernetes name of this mediator worker if not ""
     IsOperator bool  // true if this instance is an operator, not a worker
     Namespace string // namespace we're running under
+    KabaneroIntegration bool // true to integrate with Kabanero
 }
 
 

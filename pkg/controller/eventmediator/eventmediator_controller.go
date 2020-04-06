@@ -42,6 +42,10 @@ import (
     //"strconv"
 )
 
+const (
+    EVENTS_OPERATOR = "events-operator"
+)
+
 var log = logf.Log.WithName("controller_eventmediator")
 
 /**
@@ -128,16 +132,22 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
         &source.Kind{Type: &corev1.Secret{}},
         &handler.EnqueueRequestForObject{ }, controllerPredicate)
 	    if err != nil {
+            klog.Infof("Unable to watch Secrets: %v", err)
 		    return err
         }
+        klog.Infof("Started to watch Secrets")
 
-        /* Watch for Stacks */
-        err = c.Watch(
-        &source.Kind{Type: &kabanerov1alpha2.Stack{}},
-        &handler.EnqueueRequestForObject{ }, controllerPredicate)
-	    if err != nil {
-            /* we may be running in an environment where stacks are not defined */
-            klog.Infof("Unable to watch stacks: %v", err)
+        /* Should only watch stacks if Kabanero integrtion is enabled */
+        if eventenv.GetEventEnv().KabaneroIntegration {
+            err = c.Watch(
+            &source.Kind{Type: &kabanerov1alpha2.Stack{}},
+            &handler.EnqueueRequestForObject{ }, controllerPredicate)
+	        if err != nil {
+                /* we may be running in an environment where stacks are not defined */
+                klog.Infof("Unable to watch stacks: %v", err)
+                return err
+            }
+            klog.Infof("Staring watching watch Stacks")
         }
     }
 
@@ -236,8 +246,13 @@ func getPodInfo(client client.Client, namespace string) (string, string, error) 
         return "", "", err
     } else {
          serviceAccountName := pod.Spec.ServiceAccountName
-         imageName = pod.Spec.Containers[0].Image
-         return serviceAccountName, imageName, nil
+         for _, container := range pod.Spec.Containers {
+             if container.Name == EVENTS_OPERATOR {
+                 imageName = container.Image
+                 return serviceAccountName, imageName, nil
+             }
+         }
+         return "", "", fmt.Errorf("Unalbe to find container %s for the operator", EVENTS_OPERATOR)
     }
 }
 
@@ -408,6 +423,7 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
                     Containers: []corev1.Container{
                       {
                         Image:   imageName,
+                        ImagePullPolicy: corev1.PullAlways,
                         Name:    "evnetmediator",
                         Command: []string{"entrypoint"},
                         Ports: ports,
@@ -534,6 +550,7 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
 */
 func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
     body map[string]interface{}, path string, kubeClient client.Client, namespace string) (error, bool, bool, map[string]interface{}) {
+    klog.Infof("mediationMatches for  path %s", path)
 
     emptyMap := make(map[string]interface{})
     if mediationImpl.Selector == nil {
@@ -544,10 +561,13 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
         selector := mediationImpl.Selector
         urlPatternMatch := false
         if selector.UrlPattern == ""  {
+            klog.Infof("no url pattern, matching %s and %s", mediationImpl.Name, path)
             urlPatternMatch = mediationImpl.Name == path
         }  else {
+            klog.Infof("urlpattern specified, matching %s and %s", selector.UrlPattern, path)
             urlPatternMatch = selector.UrlPattern == path
         }
+         klog.Infof("matchResult: %v", urlPatternMatch)
 
         if !urlPatternMatch {
             return nil, false, false, emptyMap
@@ -611,7 +631,7 @@ func processMessage(env *eventenv.EventEnv, header map[string][]string, body map
                   /* process the message */
                   klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
                   processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                  err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client)
+                  err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration)
                   if err != nil {
                       klog.Errorf("Error processing mediation %v, error: %v", path, err)
                   }

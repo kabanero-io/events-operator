@@ -1,0 +1,30 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: webhook2
+spec:
+  createListener: true
+  createRoute: true
+  repositories:
+    - github:
+        secret: ghe-https-secret
+  mediations:
+    - mediation:
+        name: webhook
+        selector:
+          urlPattern: "webhook"
+          repositoryType:
+            newVariable: body.webhooks-appsody-config
+            file: .appsody-config.yaml
+        variables:
+          - name: body.webhooks-tekton-target-namespace
+            value: '"kabanero"'
+          - name: body.webhooks-tekton-service-account
+            value: '"kabnero-pipeline"'
+          - name: body.webhooks-tekton-ssl-verify
+            value: '"false"'
+          - name: body.webhooks-tekton-insecure-skip-tls-verify
+            value: '"true"'
+        sendTo: [ "dest"  ]
+        body:
+          - = : "sendEvent(dest, body, header)"
