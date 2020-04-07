@@ -781,7 +781,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            if  err != nil {
               return nil, nil, err
            }
-           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? \"true\" : \"false\" ", variables)
+           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
            if  err != nil {
               return nil, nil, err
            }
