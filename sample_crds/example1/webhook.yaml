@@ -6,8 +6,7 @@ spec:
   createListener: true
   createRoute: true
   mediations:
-    - mediation:
-        name: webhook
-        sendTo: [ "dest"  ]
-        body:
-          - = : 'sendEvent(dest, body, header)'
+    - name: webhook
+      sendTo: [ "dest"  ]
+      body:
+        - = : 'sendEvent(dest, body, header)'

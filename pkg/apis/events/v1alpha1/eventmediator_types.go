@@ -26,7 +26,8 @@ type EventMediatorSpec struct {
     Repositories *[]EventRepository `json:"repositories,omitempty"`
 
     // ImportMediations  *[]string `json:"importMediations,omitempty"` // default is to import everything unless code is specified
-    Mediations *[]MediationsImpl `json:"mediations"`
+    Mediations *[]EventMediationImpl `json:"mediations,omitempty"`
+    // Functions *[]EventFunctionImpl `json:"functions,omitempty"`
 }
 
 type EventRepository struct {
@@ -38,10 +39,10 @@ type EventGithubRepository struct {
 }
 
 
-type MediationsImpl struct {
-    Mediation *EventMediationImpl `json:"mediation,omitempty"`
-    Function *EventFunctionImpl `json:"function,omitempty"`
-}
+// type MediationsImpl struct {
+//     Mediation *EventMediationImpl `json:"mediation,omitempty"`
+//     Function *EventFunctionImpl `json:"function,omitempty"`
+// }
 
 /* Valid combinations are:
   1) assignment
@@ -68,7 +69,7 @@ type EventFunctionImpl struct {
 
 type EventMediationImpl  struct {
     Name string `json:"name"`
-    Input string `json:"input,omitempty"`
+    // Input string `json:"input,omitempty"`
     SendTo []string `json:"sendTo,omitempty"`
     Selector *EventMediationSelector `json:"selector,omitempty"`
     Variables *[]EventMediationVariable `json:"variables,omitempty"`

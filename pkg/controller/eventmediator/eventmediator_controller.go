@@ -620,24 +620,22 @@ func processMessage(env *eventenv.EventEnv, header map[string][]string, body map
     }
 
     for _, mediationsImpl := range *mediator.Spec.Mediations {
-         if  mediationsImpl.Mediation != nil {
-              eventMediationImpl := mediationsImpl.Mediation
-              err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, header , body, path, env.Client, env.Namespace)
+          eventMediationImpl := &mediationsImpl
+          err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, header , body, path, env.Client, env.Namespace)
+          if err != nil {
+              klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
+              return err
+          }
+          if matches {
+              /* process the message */
+              klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
+              processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
+              err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration)
               if err != nil {
-                  klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
-                  return err
+                  klog.Errorf("Error processing mediation %v, error: %v", path, err)
               }
-              if matches {
-                  /* process the message */
-                  klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
-                  processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                  err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration)
-                  if err != nil {
-                      klog.Errorf("Error processing mediation %v, error: %v", path, err)
-                  }
-                  return err
-              }
-         }
+              return err
+          }
     }
 
     klog.Info("No matching mediation")
@@ -648,6 +646,9 @@ func processMessage(env *eventenv.EventEnv, header map[string][]string, body map
 
 func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator) eventcel.GetEventFunctionHandler {
     return func(name string) *eventsv1alpha1.EventFunctionImpl {
+        /* TODO: fill in when we support functions */
+        return nil
+        /*
         if mediator.Spec.Mediations == nil {
              return nil
          }
@@ -657,8 +658,8 @@ func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator
                 return mediationsImpl.Function
              }
          }
-         /* not found */
          return nil
+         */
     }
 }
 

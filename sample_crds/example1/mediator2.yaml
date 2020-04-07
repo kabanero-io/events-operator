@@ -5,8 +5,7 @@ metadata:
 spec:
   createListener: true
   mediations:
-    - mediation:
-        name:  mediation1
-        sendTo: [ "dest"  ]
-        body:
-          - = : 'sendEvent(dest, body, header)'
+    - name:  mediation1
+      sendTo: [ "dest"  ]
+      body:
+        - = : 'sendEvent(dest, body, header)'
