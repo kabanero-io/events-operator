@@ -78,7 +78,8 @@ type EventMediationImpl  struct {
 
 type EventMediationVariable struct {
     Name string `json:"name"`
-    Value string `json:"value"`
+    Value *string `json:"value,omitempty"` // value treated as tring
+    ValueExpression *string `json:"valueExpression,omitempty"`     // value intrepreted as CEL expression
 }
 
 type EventMediationSelector struct {

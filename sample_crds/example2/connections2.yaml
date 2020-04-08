@@ -13,3 +13,5 @@ spec:
         - https:
             - url: https://mediator2-1/mediation1
               insecure: true
+            - urlExpression:  body["webhooks-kabanero-tekton-listener"]
+              insecure: true

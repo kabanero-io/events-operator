@@ -30,6 +30,8 @@ import (
     "sigs.k8s.io/controller-runtime/pkg/predicate"
     "sigs.k8s.io/controller-runtime/pkg/event"
 
+    triggers "github.com/tektoncd/triggers/pkg/apis/triggers/v1alpha1"
+
     "k8s.io/klog"
     // "os"
     "net/url"
@@ -137,7 +139,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
         }
         klog.Infof("Started to watch Secrets")
 
-        /* Should only watch stacks if Kabanero integrtion is enabled */
+        /* Should only watch stacks and Tekton listeners if Kabanero integrtion is enabled */
         if eventenv.GetEventEnv().KabaneroIntegration {
             err = c.Watch(
             &source.Kind{Type: &kabanerov1alpha2.Stack{}},
@@ -147,7 +149,17 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
                 klog.Infof("Unable to watch stacks: %v", err)
                 return err
             }
-            klog.Infof("Staring watching watch Stacks")
+            klog.Infof("Started watching Stacks")
+
+            err = c.Watch(
+            &source.Kind{Type: &triggers.EventListener{}},
+            &handler.EnqueueRequestForObject{ }, controllerPredicate)
+	        if err != nil {
+                /* we may be running in an environment where stacks are not defined */
+                klog.Infof("Unable to watch EventListener: %v", err)
+                return err
+            }
+            klog.Infof("Started watching EventListener")
         }
     }
 

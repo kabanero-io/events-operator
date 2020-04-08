@@ -148,16 +148,18 @@ const (
 	SYSTEMERROR   = "systemError"
 	FUNCTIONS     = "functions"
     HTML_URL      = "html_url"
+    REF      = "ref"
 
     APPSODY_CONFIG_YAML = ".appsody-config.yaml"
     STACK = "stack"
     WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE = "body.webhooks-tekton-git-server"
     WEBHOOKS_TEKTON_GIT_ORG_VARIABLE = "body.webhooks-tekton-git-org"
     WEBHOOKS_TEKTON_GIT_REPO_VARIABLE = "body.webhooks-tekton-git-repo"
+    WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE = "body.webhooks-tekton-git-branch"
     WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE = "body.webhooks-tekton-event-type"
     WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
     WEBHOOKS_KABANERO_TEKTON_LISTENER = "body.webhooks-kabanero-tekton-listener"
-    UNKNOWN_LISTENER = "UNKNOWN_KABAKERO_TEKTON_LISTENER"
+    UNKNOWN_LISTENER = "http://UNKNOWN_KABAKERO_TEKTON_LISTENER"
 
 )
 
@@ -777,6 +779,19 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
                }
            }
 
+           ref, exists := body[REF]
+           if exists {
+               refStr, ok := ref.(string)
+               if !ok {
+                   return nil, nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
+               }
+               branch := refStr[strings.LastIndex(refStr, "/")+1:]
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
+               if  err != nil {
+                  return nil, nil, err
+               }
+           }
+
            env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE,  "header[\"X-Github-Event\"][0]", variables)
            if  err != nil {
               return nil, nil, err
@@ -821,9 +836,16 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
     if mediationImpl.Variables != nil {
        /* Set all additional variables */
        for _, variable := range *mediationImpl.Variables  {
-           env, err = p.setOneVariable(env, variable.Name, variable.Value, variables)
-           if  err != nil {
-               return nil, nil, err
+           if variable.ValueExpression != nil {
+               env, err = p.setOneVariable(env, variable.Name, *variable.ValueExpression, variables)
+               if  err != nil {
+                   return nil, nil, err
+               }
+           } else if variable.Value != nil {
+               env, err = p.setOneVariable(env, variable.Name, "\""+ *variable.Value + "\"", variables)
+               if  err != nil {
+                   return nil, nil, err
+               }
            }
        }
     }

@@ -17,13 +17,13 @@ spec:
           file: .appsody-config.yaml
       variables:
         - name: body.webhooks-tekton-target-namespace
-          value: '"kabanero"'
+          value: kabanero
         - name: body.webhooks-tekton-service-account
-          value: '"kabnero-pipeline"'
+          value: kabnero-pipeline
         - name: body.webhooks-tekton-ssl-verify
-          value: '"false"'
+          value: "false"
         - name: body.webhooks-tekton-insecure-skip-tls-verify
-          value: '"true"'
+          value: "true"
       sendTo: [ "dest"  ]
       body:
         - = : "sendEvent(dest, body, header)"

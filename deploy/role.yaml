@@ -1,5 +1,5 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   creationTimestamp: null
   name: events-operator
@@ -85,5 +85,17 @@ rules:
   attributeRestrictions: null
   resources:
   - routes
+  verbs:
+  - '*'
+- apiGroups:
+  - kabanero.io
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- apiGroups:
+  - tekton.dev 
+  resources:
+  - '*'
   verbs:
   - '*'

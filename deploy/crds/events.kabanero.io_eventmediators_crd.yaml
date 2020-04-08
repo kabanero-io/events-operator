@@ -97,9 +97,10 @@ spec:
                           type: string
                         value:
                           type: string
+                        valueExpression:
+                          type: string
                       required:
                       - name
-                      - value
                       type: object
                     type: array
                 required:

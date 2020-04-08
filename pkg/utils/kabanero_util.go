@@ -29,6 +29,9 @@ import (
 	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	// "k8s.io/client-go/kubernetes"
     "sigs.k8s.io/controller-runtime/pkg/client"
+
+    triggers "github.com/tektoncd/triggers/pkg/apis/triggers/v1alpha1"
+
 	// "k8s.io/client-go/rest"
 	"k8s.io/klog"
 	// "net/url"
@@ -222,22 +225,22 @@ func  imageMatches(repoStackImage string,  images []kabanerov1alpha2.ImageStatus
 }
 
 
-func findEventListener(versionStatus *kabanerov1alpha2.StackVersionStatus) string {
+func findEventListener(versionStatus *kabanerov1alpha2.StackVersionStatus) (string, string) {
     for _, pipeline := range versionStatus.Pipelines {
         for _, activeAsset := range pipeline.ActiveAssets {
              if activeAsset.Group == TEKTON_DEV && activeAsset.Kind == EVENT_LISTENER {
                   /* found */
-                  return activeAsset.Name
+                  return activeAsset.Namespace, activeAsset.Name
              }
         }
     }
-    return ""
+    return "", ""
 }
 
 /* Find the Kabanero Tekton event listener for stack 
 input:
    kubeClient: client to API server
-   namespace: namespace to search for event listener
+   namespace: namespace of stack to search for event listener
    repoStackImage:  the name  of image as specified in .appsody-config.yaml. For example, "docker.io/appsody/nodejs:0.3"
    repoStackVersion: the semantic version for the stack, as specified in .appsody-config.yaml. For example "0.3"
 Return:
@@ -261,6 +264,7 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
 	}
 
     currentListener := ""
+    currentNamespace := ""
     currentVersion, _ := semverimage.NewVersion("0.0.0")
     for _, stack  := range stacks.Items {
         status := stack.Status
@@ -279,16 +283,45 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
            if !matched {
                 continue
            }
-           matchedListener := findEventListener(&versionStatus)
+           matchedNamespace, matchedListener := findEventListener(&versionStatus)
            if  matchedListener == "" {
                  continue
            }
            if currentListener == "" || matchedVersion.GreaterThan(currentVersion) {
                currentListener = matchedListener
+               currentNamespace = matchedNamespace
                currentVersion = matchedVersion
            }
         }
     }
-    return currentListener, currentVersion.String(), nil
+
+    if currentListener == "" {
+        klog.Errorf("Unable to find listener from stack for appsody repo %v:%v", repoStackImage, repoStackVersion)
+        return currentListener, currentVersion.String(), nil
+    }
+
+    /* Find the actual listener */
+    listeners := &triggers.EventListenerList{}
+    options = []client.ListOption{client.InNamespace(currentNamespace)}
+    err = kubeClient.List(context.Background(), listeners, options...) 
+    if err != nil {
+        klog.Errorf("Unable to find listener %v in namespace %v, error: %v", currentListener, currentNamespace, err)
+		return "", "", err
+	}
+    for _, listener := range listeners.Items {
+        klog.Infof("Processing listener %v in namespace %v, looking for: %v", listener.Name, currentNamespace, currentListener)
+        if listener.Name == currentListener {
+             /* found */
+             if listener.Status.Address == nil || listener.Status.Address.URL == nil {
+                 klog.Errorf("Found listener %v in namespace %v, but no URL status", currentListener, currentNamespace, err)
+                 return "", currentVersion.String(), fmt.Errorf("Found listener %v in namespace %v, but no URL status", currentListener, currentNamespace, err)
+             }
+             return listener.Status.Address.URL.String(), currentVersion.String(), nil
+        }
+    }
+
+    /* not found */
+    klog.Errorf("Unable to find listener %v in namespace %v", currentListener, currentNamespace)
+    return "", currentVersion.String(), nil
 }
 
