@@ -166,7 +166,6 @@ func processQueueWorker(queue Queue) {
 		err := (qElem.info.handler)(qElem.info.env, qElem.header, qElem.body, qElem.info.key, qElem.url)
 		if err != nil {
 			klog.Errorf("Worker thread error: url: %v, error: %v", qElem.url.String(), err)
-			return
 		}
 		klog.Infof("Worker thread completed processing url: %v", qElem.url.String())
 	}

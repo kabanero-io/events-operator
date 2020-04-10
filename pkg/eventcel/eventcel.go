@@ -148,6 +148,7 @@ const (
 	SYSTEMERROR   = "systemError"
 	FUNCTIONS     = "functions"
     HTML_URL      = "html_url"
+    REPOSITORY    = "repository"
     REF      = "ref"
 
     APPSODY_CONFIG_YAML = ".appsody-config.yaml"
@@ -751,32 +752,43 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
 
        if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
            /* evaluate pre-defined variables for appsody.body.html_url */
-           htmlUrl , exists := body[HTML_URL]
-           if ( exists ) {
-               url, ok := htmlUrl.(string)
-               if !ok {
-                   return nil, nil, fmt.Errorf("body.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
+           repository, exists := body[REPOSITORY]
+           if exists {
+               repositoryMap, ok := repository.(map[string]interface{})
+               if ! ok {
+                   return nil, nil, fmt.Errorf("body.repository is not a map[string]interface{}. type: %T, value: %v", repository, repository)
                }
+               htmlUrl , exists := repositoryMap[HTML_URL]
+               if ( exists ) {
+                   url, ok := htmlUrl.(string)
+                   if !ok {
+                       return nil, nil, fmt.Errorf("body.repository.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
+                   }
 
-               server, org, repo, err :=  utils.ParseGithubURL(url)
-               if err != nil {
-                   return nil, nil, err
-               }
+                   server, org, repo, err :=  utils.ParseGithubURL(url)
+                   if err != nil {
+                       return nil, nil, err
+                   }
 
-               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE,  "\"" + server  + "\"", variables)
-               if  err != nil {
-                  return nil, nil, err
-               }
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE,  "\"" + server  + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
 
-               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_ORG_VARIABLE,  "\"" + org  + "\"", variables)
-               if  err != nil {
-                  return nil, nil, err
-               }
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_ORG_VARIABLE,  "\"" + org  + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
 
-               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_REPO_VARIABLE,  "\"" + repo  + "\"", variables)
-               if  err != nil {
-                  return nil, nil, err
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_REPO_VARIABLE,  "\"" + repo  + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
+               } else {
+                   return nil, nil, fmt.Errorf("body.repository.html_url is not found")
                }
+           } else {
+               klog.Infof("body.repository not found. Repository related variables not generated. ")
            }
 
            ref, exists := body[REF]
