@@ -62,7 +62,7 @@ var _ = Describe("TestConnectionsManager", func() {
 								{
 									Https: &[]v1alpha1.HttpsEndpoint {
 										{
-											Url: ghUrl,
+											Url: &ghUrl,
 										},
 									},
 								},
@@ -80,7 +80,7 @@ var _ = Describe("TestConnectionsManager", func() {
 								{
 									Https: &[]v1alpha1.HttpsEndpoint {
 										{
-											Url: dockerUrl,
+											Url: &dockerUrl,
 										},
 									},
 								},
@@ -112,14 +112,14 @@ var _ = Describe("TestConnectionsManager", func() {
 								{
 									Https: &[]v1alpha1.HttpsEndpoint {
 										{
-											Url: svcUrl1,
+											Url: &svcUrl1,
 										},
 									},
 								},
 								{
 									Https: &[]v1alpha1.HttpsEndpoint {
 										{
-											Url: svcUrl2,
+											Url: &svcUrl2,
 											Insecure: true,
 										},
 									},

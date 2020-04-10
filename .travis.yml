@@ -12,18 +12,6 @@ stages:
 - test
 - deploy
 
-x_base_steps:
-- &test
-  stage: test
-  before_install:
-  - travis_retry make tidy
-  install:
-  - make install
-  after_success:
-  - echo "Build succeeded and unit/integration testing passed."
-  after_failure:
-  - echo "Build failed or unit/integration testing failed."
-
 jobs:
   include:
   - name: Build docker image
@@ -36,27 +24,21 @@ jobs:
     - echo "Image build succeeded and tagged."
     after_failure:
     - echo "Image build failed."
-  - name: Run operator tests
+  - name: Run tests
     stage: test
+    before_install:
+      - travis_retry make tidy
     install:
     - go get -v github.com/onsi/ginkgo/ginkgo
     - go get -v github.com/onsi/gomega
     - export PATH=$PATH:$HOME/gopath/bin
     - make test-setup
     script:
-    - make operator-tests
+    - make test
     after_success:
-    - echo "Operator tests passed."
+    - echo "Tests passed."
     after_failure:
-    - echo "Operator tests failed."
-  - <<: *test
-    name: Run unit tests
-    script:
-    - make unit-tests
-  - <<: *test
-    name: Run e2e tests
-    script:
-    - make e2e-tests
+    - echo "Tests failed."
   - name: Push image
     stage: deploy
     if: branch = master AND fork = false AND type != pull_request AND env(DOCKER_USERNAME) IS NOT blank AND env(DOCKER_TOKEN) IS NOT blank
