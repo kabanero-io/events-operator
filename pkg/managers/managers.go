@@ -142,16 +142,14 @@ func (mediatorMgr *MediatorManager) initialize() {
     if mediatorMgr.mediator.Spec.Mediations != nil {
         mediator := mediatorMgr.mediator
         for _, containedMediationsImpl := range *mediator.Spec.Mediations {
-            if containedMediationsImpl.Mediation != nil {
-                mediationImplMgr := &EventMediationImplManager {
-                                  manager: mediatorMgr.manager,
-                                  mediator: mediatorMgr.mediator,
-                                  //mediations: nil,
-                                  mediationImpl:  containedMediationsImpl.Mediation,
-                            }
-                 mediatorMgr.containedEventMediationImplMgr[containedMediationsImpl.Mediation.Name] = mediationImplMgr
-                 mediationImplMgr.Start()
-            }
+            mediationImplMgr := &EventMediationImplManager {
+                              manager: mediatorMgr.manager,
+                              mediator: mediatorMgr.mediator,
+                              //mediations: nil,
+                              mediationImpl:  &containedMediationsImpl,
+                        }
+             mediatorMgr.containedEventMediationImplMgr[containedMediationsImpl.Name] = mediationImplMgr
+             mediationImplMgr.Start()
         }
     }
 }

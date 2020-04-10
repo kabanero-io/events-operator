@@ -5,12 +5,15 @@ import (
 
     routev1 "github.com/openshift/api/route/v1"
 	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+    kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
 	"github.com/kabanero-io/events-operator/pkg/eventenv"
 	"github.com/kabanero-io/events-operator/pkg/eventcel"
+    "github.com/kabanero-io/events-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
     appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    // "k8s.io/client-go/kubernetes"
 	"k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,6 +30,8 @@ import (
     "sigs.k8s.io/controller-runtime/pkg/predicate"
     "sigs.k8s.io/controller-runtime/pkg/event"
 
+    triggers "github.com/tektoncd/triggers/pkg/apis/triggers/v1alpha1"
+
     "k8s.io/klog"
     // "os"
     "net/url"
@@ -37,6 +42,10 @@ import (
     "strings"
     "fmt"
     //"strconv"
+)
+
+const (
+    EVENTS_OPERATOR = "events-operator"
 )
 
 var log = logf.Log.WithName("controller_eventmediator")
@@ -118,6 +127,39 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
         )
 	    if err != nil {
 		    return err
+        }
+    } else {
+        /* watch for secrets */
+        err = c.Watch(
+        &source.Kind{Type: &corev1.Secret{}},
+        &handler.EnqueueRequestForObject{ }, controllerPredicate)
+	    if err != nil {
+            klog.Infof("Unable to watch Secrets: %v", err)
+		    return err
+        }
+        klog.Infof("Started to watch Secrets")
+
+        /* Should only watch stacks and Tekton listeners if Kabanero integrtion is enabled */
+        if eventenv.GetEventEnv().KabaneroIntegration {
+            err = c.Watch(
+            &source.Kind{Type: &kabanerov1alpha2.Stack{}},
+            &handler.EnqueueRequestForObject{ }, controllerPredicate)
+	        if err != nil {
+                /* we may be running in an environment where stacks are not defined */
+                klog.Infof("Unable to watch stacks: %v", err)
+                return err
+            }
+            klog.Infof("Started watching Stacks")
+
+            err = c.Watch(
+            &source.Kind{Type: &triggers.EventListener{}},
+            &handler.EnqueueRequestForObject{ }, controllerPredicate)
+	        if err != nil {
+                /* we may be running in an environment where stacks are not defined */
+                klog.Infof("Unable to watch EventListener: %v", err)
+                return err
+            }
+            klog.Infof("Started watching EventListener")
         }
     }
 
@@ -216,8 +258,13 @@ func getPodInfo(client client.Client, namespace string) (string, string, error) 
         return "", "", err
     } else {
          serviceAccountName := pod.Spec.ServiceAccountName
-         imageName = pod.Spec.Containers[0].Image
-         return serviceAccountName, imageName, nil
+         for _, container := range pod.Spec.Containers {
+             if container.Name == EVENTS_OPERATOR {
+                 imageName = container.Image
+                 return serviceAccountName, imageName, nil
+             }
+         }
+         return "", "", fmt.Errorf("Unalbe to find container %s for the operator", EVENTS_OPERATOR)
     }
 }
 
@@ -388,6 +435,7 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
                     Containers: []corev1.Container{
                       {
                         Image:   imageName,
+                        ImagePullPolicy: corev1.PullAlways,
                         Name:    "evnetmediator",
                         Command: []string{"entrypoint"},
                         Ports: ports,
@@ -494,9 +542,79 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
     return false
 }
 
+/* Check if the mediation should be used to process this event
+  Input:
+       mediationImpl: the mediation to match
+       body: the incoming message body
+       header: the header of the message
+       path: the path component of the incoming request
+       kubeClient: kubernetes client
+  Return 
+   error: error message if not nil
+   bool: true if mediation should be used. A mediation matches if :
+      - A selector is not present, and the name of the mediation matches the path
+      - A selector is present, and 
+          - the urlPattern, if specified, matches the path. If not specified, the name of the mediation matches the path.
+          - the repository marker file, if specified, is found. 
+   bool: true if repository marker file is specified
+   map[string]interface{}: content of the repository marker file, if the repository marker file is specified and exists.  An error message is returned if the marker file is specified, but there is a problem in locating and reading it.
+   
+*/
+func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
+    body map[string]interface{}, path string, kubeClient client.Client, namespace string) (error, bool, bool, map[string]interface{}) {
+    klog.Infof("mediationMatches for  path %s", path)
 
-func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key string, url *url.URL) error {
-    klog.Infof("In processMessage message: %v, key: %v, url: %v, url path %v", message, key, url, url.Path)
+    emptyMap := make(map[string]interface{})
+    if mediationImpl.Selector == nil {
+        if  mediationImpl.Name == path {
+            return nil, true, false, emptyMap
+        }
+    } else {
+        selector := mediationImpl.Selector
+        urlPatternMatch := false
+        if selector.UrlPattern == ""  {
+            klog.Infof("no url pattern, matching %s and %s", mediationImpl.Name, path)
+            urlPatternMatch = mediationImpl.Name == path
+        }  else {
+            klog.Infof("urlpattern specified, matching %s and %s", selector.UrlPattern, path)
+            urlPatternMatch = selector.UrlPattern == path
+        }
+         klog.Infof("matchResult: %v", urlPatternMatch)
+
+        if !urlPatternMatch {
+            return nil, false, false, emptyMap
+        }
+
+        repositoryType := selector.RepositoryType
+        if repositoryType == nil {
+            return nil, true, false, emptyMap
+        }
+
+        if repositoryType.NewVariable == "" {
+            return fmt.Errorf("newVariable not specified for Selector of Mediation %v", mediationImpl.Name), false, false, emptyMap
+        }
+
+        /* Only works with github */
+        if !utils.IsHeaderGithub(header)  {
+            return fmt.Errorf("Unable to process Non-github message for mediation %v", mediationImpl.Name), false, false, emptyMap
+        }
+
+        yaml, exists, err := utils.DownloadYAML(kubeClient, namespace, header, body, repositoryType.File)
+        if err != nil {
+             // error reading the yaml
+             return  err, false, true, emptyMap
+        }
+        if !exists{
+            // file does not exist
+            return nil, false, true, emptyMap
+        }
+        return nil, true, true, yaml
+    }
+    return nil, false, false, emptyMap
+}
+
+func processMessage(env *eventenv.EventEnv, header map[string][]string, body map[string]interface{}, key string, url *url.URL) error {
+    klog.Infof("In processMessage header: %v, body: %v, key: %v, url: %v, url path %v", header, body, key, url, url.Path)
     path := url.Path
     if strings.HasPrefix(path, "/") {
         path = path[1:]
@@ -514,19 +632,22 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
     }
 
     for _, mediationsImpl := range *mediator.Spec.Mediations {
-         if  mediationsImpl.Mediation != nil {
-              eventMediationImpl := mediationsImpl.Mediation
-              if eventMediationImpl.Name == path {
-                  /* process the message */
-                  klog.Infof("Processing mediation %v", path)
-                  processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                  _, err := processor.ProcessMessage(message, eventMediationImpl)
-                  if err != nil {
-                      klog.Errorf("Error processing mediation %v, error: %v", path, err)
-                  }
-                  return err
-               }
-         }
+          eventMediationImpl := &mediationsImpl
+          err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, header , body, path, env.Client, env.Namespace)
+          if err != nil {
+              klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
+              return err
+          }
+          if matches {
+              /* process the message */
+              klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
+              processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
+              err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration)
+              if err != nil {
+                  klog.Errorf("Error processing mediation %v, error: %v", path, err)
+              }
+              return err
+          }
     }
 
     klog.Info("No matching mediation")
@@ -537,6 +658,9 @@ func processMessage(env *eventenv.EventEnv, message map[string]interface{}, key 
 
 func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator) eventcel.GetEventFunctionHandler {
     return func(name string) *eventsv1alpha1.EventFunctionImpl {
+        /* TODO: fill in when we support functions */
+        return nil
+        /*
         if mediator.Spec.Mediations == nil {
              return nil
          }
@@ -546,14 +670,14 @@ func  generateEventFunctionLookupHandler (mediator *eventsv1alpha1.EventMediator
                 return mediationsImpl.Function
              }
          }
-         /* not found */
          return nil
+         */
     }
 }
 
-func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.EventMediator, mediationName string) func(dest string, buf []byte, header map[string][]string) error {
+func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.EventMediator, mediationName string) func(processor *eventcel.Processor, dest string, buf []byte, header map[string][]string) error {
 
-    return func(destination string, buf[]byte, header map[string][]string) error {
+    return func(processor *eventcel.Processor, destination string, buf[]byte, header map[string][]string) error {
         connectionsMgr  := env.ConnectionsMgr
         endpoint := &eventsv1alpha1.EventSourceEndpoint {
              Mediator: &eventsv1alpha1.EventMediatorSourceEndpoint {
@@ -568,8 +692,19 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
              if dest.Https != nil {
                  for _, https := range *dest.Https {
                      timeout, _ := time.ParseDuration("5s")
-                     klog.Infof("generateSendEventHandler: sending emssage to %v", https.Url)
-                     err := sendMessage(https.Url, https.Insecure, timeout,  buf, header)
+                     var url string
+                     var err error
+                     if https.Url  != nil {
+                         url = *https.Url
+                     } else if https.UrlExpression != nil {
+                         url, err = processor.EvaluateString(*https.UrlExpression)
+                         if err != nil {
+                             return err
+                         }
+                     } else {
+                     }
+                     klog.Infof("generateSendEventHandler: sending emssage to %v", url)
+                     err = sendMessage(url, https.Insecure, timeout,  buf, header)
                      if err != nil  {
                          /* TODO: better way to handle errors */
                          klog.Errorf("generateSendEventHandler: error sending message: %v", err)

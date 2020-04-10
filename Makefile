@@ -1,10 +1,10 @@
 IMAGE ?= kabanero/events-operator
-IMAGE_TAG ?= latest
+IMAGE_TAG ?= prototype
 KUBEBUILDER_VERSION ?= 2.3.0
 OPERATOR_SDK_RELEASE_VERSION ?= v0.15.2
 OPERATOR_FLAGS = --zap-level=debug --zap-encoder=console
 CRDS = $(wildcard deploy/crds/*_crd.yaml)
-SAMPLE_CRS=$(wildcard sample_crds/example1/*.yaml)
+SAMPLE_CRS=$(wildcard sample_crds/example2/*.yaml)
 
 .PHONY: setup test-setup generate install build build-all format test
 

@@ -21,6 +21,7 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	"github.com/operator-framework/operator-sdk/pkg/metrics"
+    "github.com/operator-framework/operator-sdk/pkg/restmapper"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
@@ -29,6 +30,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+    "sigs.k8s.io/controller-runtime/pkg/cache"
 
    "github.com/kabanero-io/events-operator/pkg/managers"
    "github.com/kabanero-io/events-operator/pkg/eventenv"
@@ -36,6 +38,9 @@ import (
    "github.com/kabanero-io/events-operator/pkg/listeners"
 
     routev1 "github.com/openshift/api/route/v1"
+
+    kab_operator "github.com/kabanero-io/kabanero-operator/pkg/apis"
+    triggers "github.com/tektoncd/triggers/pkg/apis/triggers/v1alpha1"
 )
 
 const (
@@ -114,10 +119,16 @@ func main() {
     }
 
 	// Create a new Cmd to provide shared dependencies and start components
-	mgr, err := manager.New(cfg, manager.Options{
-		Namespace:          namespace,
-		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
-	})
+	// mgr, err := manager.New(cfg, manager.Options{
+    // 		Namespace:          namespace,
+    // 		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+    // 	})
+    var namespaces []string = []string { namespace, "tekton-pipelines" }
+    mgr, err := manager.New(cfg, manager.Options{
+       NewCache: cache.MultiNamespacedCacheBuilder(namespaces),
+       MapperProvider:     restmapper.NewDynamicRESTMapper,
+       MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+    })
 	if err != nil {
 		log.Error(err, "")
 		os.Exit(1)
@@ -133,6 +144,8 @@ func main() {
         ListenerMgr: listeners.NewDefaultListenerManager(),
         IsOperator:  isOperator,
         MediatorName: mediatorName,
+        Namespace: operatorNamespace,
+        KabaneroIntegration: true,
     }
     eventenv.InitEventEnv(env)
 
@@ -146,6 +159,18 @@ func main() {
 
     // Add route scheme
     if err := routev1.AddToScheme(mgr.GetScheme()); err != nil {
+        log.Error(err, "")
+        os.Exit(1)
+    }
+
+    // Add stack scheme
+    if err := kab_operator.AddToScheme(mgr.GetScheme()); err != nil {
+        log.Error(err, "")
+        os.Exit(1)
+    }
+
+    // Add EventListener scheme 
+    if err := triggers.AddToScheme(mgr.GetScheme()); err != nil {
         log.Error(err, "")
         os.Exit(1)
     }

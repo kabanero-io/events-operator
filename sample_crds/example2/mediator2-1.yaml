@@ -1,12 +1,11 @@
 apiVersion: events.kabanero.io/v1alpha1
 kind: EventMediator
 metadata:
-  name: webhook
+  name: mediator2-1
 spec:
   createListener: true
-  createRoute: true
   mediations:
-    - name: webhook
+    - name:  mediation1
       sendTo: [ "dest"  ]
       body:
         - = : 'sendEvent(dest, body, header)'
