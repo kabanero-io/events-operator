@@ -20,6 +20,8 @@ spec:
           value: kabanero
         - name: body.webhooks-tekton-service-account
           value: kabnero-pipeline
+        - name: body.webhooks-tekton-docker-registry
+          value: ""
         - name: body.webhooks-tekton-ssl-verify
           value: "false"
         - name: body.webhooks-tekton-insecure-skip-tls-verify

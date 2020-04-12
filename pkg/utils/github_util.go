@@ -237,7 +237,7 @@ func IsHeaderGithub(header map[string][]string) bool {
 /* Parse Github URL into server, org, and repo 
   Input: url for the github server, e.g., https://github.com/org/repo
   OUtput:
-     server:  The server, e.g., https"//github.com
+     server:  The server, e.g., github.com
      org:  The org portion of the url
      repo: The name of the repo
 */
@@ -259,7 +259,7 @@ func ParseGithubURL(url string) (server, org, repo string, err error) {
     if len(components) != 3 {
         return "", "", "", fmt.Errorf("Unable to parse url: %v", url)
     }
-    server = prefix + "://" + components[0]
+    server = components[0]
     org = components[1]
     repo = components[2]
 
