@@ -16,10 +16,11 @@ const (
 	MessageBody = "body"
 )
 
-// Event contains the destination URL and message
+// Event contains the destination URL, headers, and a body
 type Event struct {
-	URL     *url.URL
-	Message map[string]interface{}
+	URL    *url.URL
+	Header map[string][]string
+	Body   map[string]interface{}
 }
 
 // Types of events
@@ -59,13 +60,10 @@ func EnqueueHandler(queue Queue) http.HandlerFunc {
 			klog.Info("Request did not have a body")
 		}
 
-		message := make(map[string]interface{})
-		message[MessageHeader] = map[string][]string(r.Header)
-		message[MessageBody] = bodyMap
-
 		queue.Enqueue(&Event{
-			URL:     r.URL,
-			Message: message,
+			URL:    r.URL,
+			Header: r.Header,
+			Body:   bodyMap,
 		})
 
 		writer.WriteHeader(http.StatusOK)
@@ -78,7 +76,7 @@ func ProcessQueueWorker(queue Queue, handler Handler) {
 	for {
 		event := queue.Dequeue().(*Event)
 		// TODO: Remove this later or only include when very verbose logging is enabled
-		klog.Infof("Worker thread processing url: %s, message: %v", event.URL, event.Message)
+		klog.Infof("Worker thread processing url: %s, header: %v, body: %v", event.URL, event.Header, event.Body)
 		err := handler(event)
 		if err != nil {
 			klog.Errorf("Worker thread error: url: %s, error: %v", event.URL, err)

@@ -48,6 +48,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	// "k8s.io/client-go/dynamic"
 	"k8s.io/klog"
+    "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 /* Trigger file syntax
@@ -146,6 +147,21 @@ const (
 	EVENTTRIGGERS = "eventTriggers"
 	SYSTEMERROR   = "systemError"
 	FUNCTIONS     = "functions"
+    HTML_URL      = "html_url"
+    REPOSITORY    = "repository"
+    REF      = "ref"
+
+    APPSODY_CONFIG_YAML = ".appsody-config.yaml"
+    STACK = "stack"
+    WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE = "body.webhooks-tekton-git-server"
+    WEBHOOKS_TEKTON_GIT_ORG_VARIABLE = "body.webhooks-tekton-git-org"
+    WEBHOOKS_TEKTON_GIT_REPO_VARIABLE = "body.webhooks-tekton-git-repo"
+    WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE = "body.webhooks-tekton-git-branch"
+    WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE = "body.webhooks-tekton-event-type"
+    WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
+    WEBHOOKS_KABANERO_TEKTON_LISTENER = "body.webhooks-kabanero-tekton-listener"
+    UNKNOWN_LISTENER = "http://UNKNOWN_KABAKERO_TEKTON_LISTENER"
+
 )
 
 const (
@@ -235,7 +251,7 @@ type EventTriggerDefinition struct {
 /* Handler to find event function given function name */
 type GetEventFunctionHandler func(name string) *eventsv1alpha1.EventFunctionImpl
 
-type SendEventHandler func(dest string, buf []byte, header map[string][]string) error
+type SendEventHandler func(processor *Processor, dest string, buf []byte, header map[string][]string) error
 
 // Processor contains the event trigger definition and the file it was loaded from
 type Processor struct {
@@ -245,6 +261,8 @@ type Processor struct {
 	// triggerDir       string // directory where trigger file is stored
 	additionalFuncDecls cel.EnvOption
 	additionalFuncs     cel.ProgramOption
+    variables map[string]interface{}
+    env cel.Env
 }
 
 // NewProcessor creates a new trigger processor.
@@ -252,6 +270,7 @@ func NewProcessor( functionHandler GetEventFunctionHandler, sendHandler SendEven
 	p := &Processor{
         getFunctionHandler: functionHandler,
         sendEventHandler: sendHandler,
+        variables: make(map[string]interface{}),
 	}
 	p.initCELFuncs()
     return p
@@ -389,33 +408,45 @@ func (p *Processor) parseTrigger(trigger map[interface{}]interface{}) ([]string,
 }
 */
 
-// ProcessMessage processes an event message.
-func (p *Processor) ProcessMessage(message map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl) ([]map[string]interface{}, error) {
+/* ProcessMessage processes an event message.
+Input:
+    header: header of message
+    body: body of message
+    mediation: mediation to process the message
+    hasRepoType: true if RepositoryType is specified for the mediation
+    repoTypeValue: the value of the yaml file specified by the RepositoryType
+    namespace: namepsace we're running
+    client: controller client
+    kabaneroIntegration: true to generate kabanero integration attributes when processing appsody config builds
+*/
+func (p *Processor) ProcessMessage(header map[string][]string, body map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl,
+    hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool ) error {
     klog.Infof("Entering Processor.ProcessMessage for mediation %v,message: %v", mediation.Name, mediation)
 	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
-	savedVariables := make([]map[string]interface{}, 0)
-    env, variables, err := p.initializeCELEnv(message, mediation.Input, mediation.SendTo)
+    var err error
+    p.env, p.variables, err = p.initializeCELEnv(header, body, mediation, hasRepoType, repoTypeValue, namespace, client, kabaneroIntegration)
 	if err != nil {
-		return nil, err
+		klog.Errorf("ProcessMessage failed after initializeCELEnv: %v", err)
+		return err
 	}
 	if klog.V(5) {
 		klog.Infof("ProcessMessage after initializeCELEnv")
 	}
 
+    klog.Infof("ProcessMessage evaluating mediation %v", mediation.Body)
 	depth := 1
-	_, err = p.evalEventStatementArray(env, variables, mediation.Body, depth)
+	_, err = p.evalEventStatementArray(p.env, p.variables, mediation.Body, depth)
 	if err != nil {
 		klog.Errorf("Error evaluating mediation %v: ERROR MESSAGE: %v", mediation, err)
-		return nil, err
+		return err
 	}
 
 	if klog.V(5) {
 		klog.Infof("ProcessMessage after evalEventStatementArray")
 	}
-	savedVariables = append(savedVariables, variables)
 
-	return savedVariables, nil
+	return  nil
 }
 
 /* Eval body  Array
@@ -650,18 +681,29 @@ func (p *Processor) initializeEmptyCELEnv() (cel.Env, error) {
 	return cel.NewEnv(additionalFuncs)
 }
 
-/* Get initial CEL environment
+/* Get initial CEL environment, and initialize variables, including checking for appsody repository and 
+setting github and Tekton listener related variables.
+  header, body: incoming message
+  mediationImpl: the mediation to process the message
+  hasRepoType: true of RepositoryType specified
+  repoTypeValue: value of the repository type 
+  namespace: namespace we're running in
+  client: controller client
+  kabaneroIntegration: true to generate Kabanero integration attributes
 Return: cel.Env: the CEL environment
 	map[string]interface{}: variables used during substitution
     inputVariableName name of input variable, to be bound to message
     sendTo: name of destinations
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariableName string, sendTo []string) (cel.Env, map[string]interface{}, error) {
+func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool) (cel.Env, map[string]interface{}, error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
 	}
+
+    // inputVariableName := mediationImpl.Input
+    sendTo := mediationImpl.SendTo
 
 	/* initialize empty CEL environment with additional functions */
 	env, err := p.initializeEmptyCELEnv()
@@ -670,13 +712,22 @@ func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariab
 	}
 
 	variables := make(map[string]interface{})
-	ident := decls.NewIdent(inputVariableName, decls.NewMapType(decls.String, decls.Any), nil)
+
+	ident := decls.NewIdent(BODY, decls.NewMapType(decls.String, decls.Any), nil)
 	env, err = env.Extend(cel.Declarations(ident))
 	if err != nil {
 		return nil, nil, err
 	}
 	/* Add message as a new variable */
-	variables[inputVariableName] = message
+	variables[BODY] = body
+
+	ident = decls.NewIdent(HEADER, decls.NewMapType(decls.String, decls.Any), nil)
+	env, err = env.Extend(cel.Declarations(ident))
+	if err != nil {
+		return nil, nil, err
+	}
+	/* Add header as a new variable */
+	variables[HEADER] = header
 
     /* set the destination variables */
     for _, dest := range sendTo {
@@ -688,7 +739,166 @@ func (p *Processor) initializeCELEnv(message map[string]interface{}, inputVariab
 	   variables[dest] = dest
     }
 
+    if hasRepoType {
+       /* set the value of repository type variable */
+       data, err := json.Marshal(repoTypeValue)
+       if err != nil {
+           return nil, nil, err
+       }
+       env, err = p.setOneVariable(env, mediationImpl.Selector.RepositoryType.NewVariable, string(data), variables)
+       if  err != nil {
+           return nil, nil, err
+       }
+
+       if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
+           /* evaluate pre-defined variables for appsody.body.html_url */
+           repository, exists := body[REPOSITORY]
+           if exists {
+               repositoryMap, ok := repository.(map[string]interface{})
+               if ! ok {
+                   return nil, nil, fmt.Errorf("body.repository is not a map[string]interface{}. type: %T, value: %v", repository, repository)
+               }
+               htmlUrl , exists := repositoryMap[HTML_URL]
+               if ( exists ) {
+                   url, ok := htmlUrl.(string)
+                   if !ok {
+                       return nil, nil, fmt.Errorf("body.repository.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
+                   }
+
+                   server, org, repo, err :=  utils.ParseGithubURL(url)
+                   if err != nil {
+                       return nil, nil, err
+                   }
+
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE,  "\"" + server  + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
+
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_ORG_VARIABLE,  "\"" + org  + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
+
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_REPO_VARIABLE,  "\"" + repo  + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
+               } else {
+                   return nil, nil, fmt.Errorf("body.repository.html_url is not found")
+               }
+           } else {
+               klog.Infof("body.repository not found. Repository related variables not generated. ")
+           }
+
+           ref, exists := body[REF]
+           if exists {
+               refStr, ok := ref.(string)
+               if !ok {
+                   return nil, nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
+               }
+               branch := refStr[strings.LastIndex(refStr, "/")+1:]
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
+               if  err != nil {
+                  return nil, nil, err
+               }
+           }
+
+           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE,  "header[\"X-Github-Event\"][0]", variables)
+           if  err != nil {
+              return nil, nil, err
+           }
+           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
+           if  err != nil {
+              return nil, nil, err
+           }
+
+           stack, ok := repoTypeValue[STACK]
+           if !ok {
+               return  nil, nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
+           }
+           stackStr, ok := stack.(string)
+           if !ok {
+               return  nil, nil, fmt.Errorf("stack %v not string in appsody-configy.yaml: %v", stack, repoTypeValue)
+           }
+           components := strings.Split(stackStr, ":")
+           if len(components) != 2 {
+               return  nil, nil, fmt.Errorf("invalid stack value in appsody-configy.yaml:%v  ", stackStr)
+           }
+
+           listener := ""
+           version := "unknown"
+           if kabaneroIntegration {
+               listener, version, err = utils.FindEventListenerForStack(client, namespace, components[0], components[1])
+               if err != nil {
+                   return nil, nil, err
+               }
+            }
+            if listener == "" {
+                listener = UNKNOWN_LISTENER
+            }
+            klog.Infof("For stack %s, found event listener %s, version: %v", stackStr, listener, version)
+            env, err = p.setOneVariable(env, WEBHOOKS_KABANERO_TEKTON_LISTENER,  "\"" + listener + "\"", variables)
+            if  err != nil {
+               return nil, nil, err
+            }
+       }
+    }
+
+    if mediationImpl.Variables != nil {
+       /* Set all additional variables */
+       for _, variable := range *mediationImpl.Variables  {
+           if variable.ValueExpression != nil {
+               env, err = p.setOneVariable(env, variable.Name, *variable.ValueExpression, variables)
+               if  err != nil {
+                   return nil, nil, err
+               }
+           } else if variable.Value != nil {
+               env, err = p.setOneVariable(env, variable.Name, "\""+ *variable.Value + "\"", variables)
+               if  err != nil {
+                   return nil, nil, err
+               }
+           }
+       }
+    }
+
+
 	return env, variables, nil
+}
+
+/* Evaluate an expressions that should result in a string
+*/
+func (p *Processor) EvaluateString(val string) (string, error) {
+
+	val = strings.Trim(val, " ")
+	parsed, issues := p.env.Parse(val)
+	if issues != nil && issues.Err() != nil {
+		return "", fmt.Errorf("EvaluteString: parsing error for expression %s, error: %v", val, issues.Err())
+	}
+	checked, issues := p.env.Check(parsed)
+	if issues != nil && issues.Err() != nil {
+		return "", fmt.Errorf("EvaluteString: CEL check error for expresion %s, error: %v", val, issues.Err())
+	}
+	prg, err := p.env.Program(checked, p.getAdditionalCELFuncs())
+	if err != nil {
+		return "", fmt.Errorf("EvaluteString: CEL program error for expression %s, error: %v", val, err)
+	}
+	// out, details, err := prg.Eval(variables)
+	out, _, err := prg.Eval(p.variables)
+	if err != nil {
+		return "", fmt.Errorf("EvaluteString: CEL Eval error for expression %s, error: %v", val, err)
+	}
+
+	if klog.V(3) {
+		klog.Infof("EvaluteString: After evaluating expression %s, value type: %T, value: %v\n", val, out.Type().TypeName(), out.Value())
+	}
+
+    stringval, ok := out.Value().(string)
+    if !ok {
+		return "", fmt.Errorf("EvaluteString: unable to cast expression %s, value %v into string",  val, out.Value())
+    }
+
+    return stringval, nil
 }
 
 func (p *Processor) setOneVariable(env cel.Env, name string, val string, variables map[string]interface{}) (cel.Env, error) {
@@ -713,9 +923,7 @@ func (p *Processor) setOneVariable(env cel.Env, name string, val string, variabl
 		return env, fmt.Errorf("CEL Eval error when setting variable %s to %s, error: %v", name, val, err)
 	}
 
-	if klog.V(3) {
-		klog.Infof("When setting variable %s to %s, eval of value results in typename: %s, value type: %T, value: %s\n", name, val, out.Type().TypeName(), out.Value(), out.Value())
-	}
+    klog.Infof("When setting variable %s to %s, eval of value results in typename: %s, value type: %T, value: %s\n", name, val, out.Type().TypeName(), out.Value(), out.Value())
 
     if name != "" {
         env, err = createOneVariable(env, name, val, out, variables)
@@ -889,16 +1097,26 @@ func createOneVariableHelper(env cel.Env, entireName string, name string, val st
 			return env, fmt.Errorf("unable to cast variable %s, value %s, evaluaed value %v, type %T into map", entireName, val, outValue, outValue)
 		}
 		if createNewIdent {
+            // TODO: not necessarily always string key 
 			ident := decls.NewIdent(name, decls.NewMapType(decls.String, decls.Any), nil)
 			env, err = env.Extend(cel.Declarations(ident))
 			if err != nil {
 				return env, err
 			}
 		}
-		variables[name] = outValue
-		if klog.V(4) {
-			klog.Infof("variable %s set to %v", entireName, out)
-		}
+        mapRefValOutValue, ok := outValue.(map[ref.Val]ref.Val)
+        if !ok {
+		    variables[name] = outValue
+            // if klog.V(4) {
+    			klog.Infof("variable %s set to %v, type %t", entireName, out, out)
+    		//}
+         } else {
+              convertedValue, err := convertToMapStringInterface(mapRefValOutValue)
+              if err != nil{
+                  return env, err
+              }
+              variables[name] = convertedValue
+         }
 	default:
 		if createNewIdent {
 			/* don't have a usable type to create new top level variable  */
@@ -1462,12 +1680,14 @@ func (p *Processor) jobIDCEL(values ...ref.Val) ref.Val {
 	return types.String(GetTimestamp())
 }
 
-/* Return next job ID */
+/* Return kabanero config */
+/*
 func (p *Processor) kabaneroConfigCEL(values ...ref.Val) ref.Val {
 	ret := make(map[string]interface{})
 	ret[NAMESPACE] = utils.GetKabaneroNamespace()
 	return types.NewDynamicMap(types.DefaultTypeAdapter, ret)
 }
+*/
 
 /* implementation of downlodYAML for CEL.
    webhookMessage: map[string]interface{} contains the original webhook message
@@ -1619,6 +1839,20 @@ func (p *Processor) callCEL(functionVal ref.Val, param ref.Val) ref.Val {
 		return types.ValOrErr(types.NewDynamicMap(types.DefaultTypeAdapter, variables), "while calling function %v: return value  %v has unsupproted type %T", function, outValueObj, outValueObj)
 	}
 	return ret
+}
+
+/* Convert a map[rev.Val]rev.Val to map[string]interface{}
+*/
+func convertToMapStringInterface(mapRefVal map[ref.Val]ref.Val) (map[string]interface{}, error ) {
+    ret := make(map[string]interface{})
+    for key, val :=  range mapRefVal {
+	    if key.Type().TypeName() == TYPESTRING {
+            ret[key.Value().(string)] = val.Value()
+        } else {
+            return ret, fmt.Errorf("key of map[rev.Val]ref.Val is not a string. Key: %v, key type: %t", key, key)
+        }
+    }
+    return ret, nil
 }
 
 /* Convert a value to ref.Val
@@ -1793,12 +2027,13 @@ func convertToHeaderMap(value interface{}) (map[string][]string, error) {
 
 /* implementation of sendEvent
    destination string: where to send the event
-   message Any: JSON message
-   context Any: optional context for the event, such as header
+   body  Any: JSON message body
+   header Any: header for the emssage
    Return string : empty if OK, otherwise, error message
 */
 // func sendEventCEL(destination ref.Val, message ref.Val, context ref.Val) ref.Val
 func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
+    klog.Infof("in sendEventCEL")
 	if refs == nil {
 		klog.Error("sendEventCEL input is nil")
 		return types.ValOrErr(nil, "unexpected nil input to sendEventCEL.")
@@ -1811,23 +2046,23 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 
 	destination := refs[0]
-	message := refs[1]
-	context := refs[2]
+	body := refs[1]
+	header := refs[2]
 
 	if klog.V(6) {
-		klog.Infof("sendEventCEL first param: %v, second param: %v", destination, message)
+		klog.Infof("sendEventCEL first param: %v, second param: %v", destination, body)
 	}
 
-	if message.Value() == nil {
+	if body.Value() == nil {
 		klog.Infof("sendEventCEL  message is nil")
-		return types.ValOrErr(message, "unexpected null message parameter passed to function sendEvent.")
+		return types.ValOrErr(body, "unexpected null message parameter passed to function sendEvent.")
 	}
 
 	if destination.Value() == nil {
 		klog.Infof("sendEventCEL destination is nil")
 		return types.ValOrErr(destination, "unexpected null destination parameter passed to function sendEvent.")
 	}
-	klog.Infof("sendEventCEL first param type: %v, second param type: %v", destination.Type(), message.Type())
+	klog.Infof("sendEventCEL first param type: %v, second param type: %v", destination.Type(), body.Type())
 
 	dest, ok := destination.Value().(string)
 	if !ok {
@@ -1835,7 +2070,7 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 		return types.ValOrErr(destination, "unexpected type '%v' passed as destination parameter to function sendEventCEL. It should be string", destination.Type())
 	}
 
-	value := message.Value()
+	value := body.Value()
 	buf, err := json.Marshal(value)
 	if err != nil {
 		klog.Errorf("Unable to marshall as JSON: %v, type %T", value, value)
@@ -1843,16 +2078,16 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 
 
-	header := make(map[string][]string)
+	headerValue := make(map[string][]string)
 	if numParams == 3 {
-		header, err = convertToHeaderMap(context.Value())
+		headerValue, err = convertToHeaderMap(header.Value())
 		if err != nil {
-			return types.ValOrErr(context, "sendEventCEL unable to convert header to map[string][]string: %v", context)
+			return types.ValOrErr(header, "sendEventCEL unable to convert header to map[string][]string: %v", header)
 		}
 	}
 
     if klog.V(6) {
-		klog.Infof("Sending buffer: %v, header: %v", buf, header)
+		klog.Infof("Sending buffer: %v, header: %v", buf, headerValue)
     }
 
 /*
@@ -1862,7 +2097,7 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	}
 */
 
-	err = p.sendEventHandler(dest, buf, header)
+	err = p.sendEventHandler(p, dest, buf, headerValue)
 	if err != nil {
 		klog.Errorf("sendEvent unable to send event to destination %v: '%v'", dest, err)
 		return types.ValOrErr(nil, "sendEventCEL: unable to send event: %v", err)
@@ -2055,8 +2290,8 @@ func (p *Processor) initCELFuncs() {
 		decls.NewFunction("applyResources",
 			decls.NewOverload("applyResources_string_any", []*exprpb.Type{decls.String, decls.Any}, decls.String)),
 */
-		decls.NewFunction("kabaneroConfig",
-			decls.NewOverload("kabaneroConfig", []*exprpb.Type{}, decls.NewMapType(decls.String, decls.Any))),
+//		decls.NewFunction("kabaneroConfig",
+//			decls.NewOverload("kabaneroConfig", []*exprpb.Type{}, decls.NewMapType(decls.String, decls.Any))),
 		decls.NewFunction("jobID",
 			decls.NewOverload("jobID", []*exprpb.Type{}, decls.String)),
 		/*decls.NewFunction("downloadYAML",
@@ -2085,9 +2320,10 @@ func (p *Processor) initCELFuncs() {
 			Operator: "applyResources",
 			Binary:   p.applyResourcesCEL},
 */
-		&functions.Overload{
+/*		&functions.Overload{
 			Operator: "kabaneroConfig",
 			Function: p.kabaneroConfigCEL},
+*/
 		&functions.Overload{
 			Operator: "jobID",
 			Function: p.jobIDCEL},

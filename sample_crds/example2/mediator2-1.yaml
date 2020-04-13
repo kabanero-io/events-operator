@@ -1,7 +1,7 @@
 apiVersion: events.kabanero.io/v1alpha1
 kind: EventMediator
 metadata:
-  name: mediator2
+  name: mediator2-1
 spec:
   createListener: true
   mediations:

@@ -11,16 +11,15 @@ const (
 	MEDIATOR_NAME_KEY = "MEDIATOR-NAME" // environment variable. If not set, we're running as operator.
 )
 
-
-
-
 type EventEnv struct {
-	Client         client.Client
-	EventMgr       *managers.EventManager
-	ConnectionsMgr *connections.ConnectionsManager
-	ListenerMgr    listeners.ListenerManager
-	MediatorName   string // Kubernetes name of this mediator worker if not ""
-	IsOperator     bool   // true if this instance is an operator, not a worker
+	Client              client.Client
+	EventMgr            *managers.EventManager
+	ConnectionsMgr      *connections.ConnectionsManager
+	ListenerMgr         listeners.ListenerManager
+	MediatorName        string // Kubernetes name of this mediator worker if not ""
+	IsOperator          bool   // true if this instance is an operator, not a worker
+	Namespace           string // namespace we're running under
+	KabaneroIntegration bool   // true to integrate with Kabanero
 }
 
 var eventEnv *EventEnv

@@ -23,9 +23,7 @@ var _ = Describe("TestEvbentManager", func() {
 		mgr = NewEventManager()
 	})
 
-	assignStatement := "sendEvent(dest1, message.body, message.header)"
-	filterStatement := `outHeader = filter(inHeader, "key.startsWith(\"X-Github\") || key == \"X-Hub-Signature\"")`
-
+	assignStatement := "sendEvent(dest, body, header)"
 	mediator := &v1alpha1.EventMediator{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "events.kabanero.io/v1alpha1",
@@ -38,28 +36,13 @@ var _ = Describe("TestEvbentManager", func() {
 		Spec: v1alpha1.EventMediatorSpec{
 			ListenerPort: 9443,
 			CreateRoute:  true,
-			Mediations: &[]v1alpha1.MediationsImpl{
+			Mediations: &[]v1alpha1.EventMediationImpl{
 				{
-					Mediation: &v1alpha1.EventMediationImpl{
-						Name:   "mediation-test",
-						Input:  "message",
-						SendTo: []string{"dest1", "dest2"},
-						Body: []v1alpha1.EventStatement{
-							{
-								Assign: &assignStatement,
-							},
-						},
-					},
-				},
-				{
-					Function: &v1alpha1.EventFunctionImpl{
-						Name:   "filterGitHubHeader",
-						Input:  "inHeader",
-						Output: "outHeader",
-						Body: []v1alpha1.EventStatement{
-							{
-								Assign: &filterStatement,
-							},
+					Name:   "mediation-test",
+					SendTo: []string{"dest"},
+					Body: []v1alpha1.EventStatement{
+						{
+							Assign: &assignStatement,
 						},
 					},
 				},

@@ -19,8 +19,10 @@ package utils
 import (
 	"context"
 	"fmt"
+    "strings"
 	"github.com/google/go-github/github"
-	"k8s.io/client-go/kubernetes"
+	// "k8s.io/client-go/kubernetes"
+    "sigs.k8s.io/controller-runtime/pkg/client"
 	"k8s.io/klog"
 	"net/http"
 )
@@ -120,7 +122,7 @@ DownloadYAML Downloads a YAML file from a git repository.
   header: HTTP header from webhook
   bodyMap: HTTP  message body from webhook
 */
-func DownloadYAML(kubeClient *kubernetes.Clientset, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
+func DownloadYAML(kubeClient client.Client, namespace string, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
 
 	hostHeader, isEnterprise := header[http.CanonicalHeaderKey("x-github-enterprise-host")]
 	var host string
@@ -137,7 +139,6 @@ func DownloadYAML(kubeClient *kubernetes.Clientset, header map[string][]string, 
 		return nil, false, fmt.Errorf("unable to get repository owner, name, or html_url from webhook message: %v", err)
 	}
 
-	namespace := GetKabaneroNamespace()
 	user, token, err := GetGitHubSecret(kubeClient, namespace, htmlURL)
 	if err != nil {
 		return nil, false, fmt.Errorf("unable to get user/token secret for URL %s: %v", htmlURL, err)
@@ -225,3 +226,43 @@ func DownloadFileFromGithub(owner, repository, fileName, ref, githubURL, user, t
 	}
 
 }
+
+/* Return true if header is from Github event */
+func IsHeaderGithub(header map[string][]string) bool {
+
+    _, ok := header["X-Github-Event"]
+    return ok
+}
+
+/* Parse Github URL into server, org, and repo 
+  Input: url for the github server, e.g., https://github.com/org/repo
+  OUtput:
+     server:  The server, e.g., https"//github.com
+     org:  The org portion of the url
+     repo: The name of the repo
+*/
+func ParseGithubURL(url string) (server, org, repo string, err error) {
+    url = strings.Trim(url, " ")
+    index := strings.Index(url, "://")
+    if index < 0 {
+        return "", "", "", fmt.Errorf("Unable to parse url: %v", url)
+    }
+    prefix := url[0:index]
+    if prefix != "http" && prefix != "https" &&  prefix != "HTTP" && prefix != "HTTPS"{
+        return "", "", "", fmt.Errorf("Unable to parse url: %v", url)
+    }
+    if len(url) <= index+3 {
+        return "", "", "", fmt.Errorf("Unable to parse url: %v", url)
+    }
+    remainder := url[index+3:]
+    components := strings.Split(remainder, "/")
+    if len(components) != 3 {
+        return "", "", "", fmt.Errorf("Unable to parse url: %v", url)
+    }
+    server = prefix + "://" + components[0]
+    org = components[1]
+    repo = components[2]
+
+    return server, org, repo, nil
+}
+

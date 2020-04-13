@@ -9,9 +9,7 @@ spec:
   #  - github:
   #      secret: my-super-secret-secret
   mediations:
-    - mediation:
-        name: webhook
-        input: message
-        sendTo: [ "dest"  ]
-        body:
-          - = : 'sendEvent(dest, message.body, message.header)'
+    - name: webhook
+      sendTo: [ "dest"  ]
+      body:
+        - = : 'sendEvent(dest, body, header)'

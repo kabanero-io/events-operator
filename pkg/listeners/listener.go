@@ -44,7 +44,6 @@ type ListenerManager interface {
 
 type listenerInfo struct {
 	port int32
-
 }
 
 type ListenerOptions struct {

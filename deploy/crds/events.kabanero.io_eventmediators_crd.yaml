@@ -47,102 +47,64 @@ spec:
                 // default is to import everything unless code is specified
               items:
                 properties:
-                  function:
-                    properties:
-                      body:
-                        items:
-                          description: ' Valid combinations are:   1) assignment   2)
-                            if and assignment   3) if and body   4) switch   5) if
-                            and switch   TBD: switch and default'
-                          properties:
-                            =:
-                              type: string
-                            body:
-                              items: {}
-                              type: array
-                            default:
-                              items: {}
-                              type: array
-                            if:
-                              type: string
-                            switch:
-                              items: {}
-                              type: array
-                          type: object
-                        type: array
-                      input:
-                        type: string
-                      name:
-                        type: string
-                      output:
-                        type: string
-                    required:
-                    - body
-                    - input
-                    - name
-                    - output
-                    type: object
-                  mediation:
-                    properties:
-                      body:
-                        items:
-                          description: ' Valid combinations are:   1) assignment   2)
-                            if and assignment   3) if and body   4) switch   5) if
-                            and switch   TBD: switch and default'
-                          properties:
-                            =:
-                              type: string
-                            body:
-                              items: {}
-                              type: array
-                            default:
-                              items: {}
-                              type: array
-                            if:
-                              type: string
-                            switch:
-                              items: {}
-                              type: array
-                          type: object
-                        type: array
-                      input:
-                        type: string
-                      name:
-                        type: string
-                      selector:
-                        properties:
-                          repositoryType:
-                            properties:
-                              file:
-                                type: string
-                              newVariable:
-                                type: string
-                            required:
-                            - file
-                            - newVariable
-                            type: object
-                          urlPattern:
-                            type: string
-                        type: object
-                      sendTo:
-                        items:
+                  body:
+                    items:
+                      description: ' Valid combinations are:   1) assignment   2)
+                        if and assignment   3) if and body   4) switch   5) if and
+                        switch   TBD: switch and default'
+                      properties:
+                        =:
                           type: string
-                        type: array
-                      variables:
-                        items:
-                          properties:
-                            name:
-                              type: string
-                            value:
-                              type: string
-                          required:
-                          - name
-                          - value
-                          type: object
-                        type: array
-                    required:
-                    - name
+                        body:
+                          items: {}
+                          type: array
+                        default:
+                          items: {}
+                          type: array
+                        if:
+                          type: string
+                        switch:
+                          items: {}
+                          type: array
+                      type: object
+                    type: array
+                  name:
+                    type: string
+                  selector:
+                    properties:
+                      repositoryType:
+                        properties:
+                          file:
+                            type: string
+                          newVariable:
+                            type: string
+                        required:
+                        - file
+                        - newVariable
+                        type: object
+                      urlPattern:
+                        type: string
                     type: object
+                  sendTo:
+                    description: Input string `json:"input,omitempty"`
+                    items:
+                      type: string
+                    type: array
+                  variables:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                        valueExpression:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                required:
+                - name
                 type: object
               type: array
             repositories:
@@ -155,8 +117,6 @@ spec:
                     type: object
                 type: object
               type: array
-          required:
-          - mediations
           type: object
         status:
           description: EventMediatorStatus defines the observed state of EventMediator

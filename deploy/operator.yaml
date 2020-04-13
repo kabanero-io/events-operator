@@ -16,7 +16,7 @@ spec:
       containers:
         - name: events-operator
           # Replace this with the built image name
-          image: kabanero/events-operator:latest
+          image: kabanero/events-operator:prototype
 #          command:
 #          - events-operator
           imagePullPolicy: Always

@@ -35,7 +35,7 @@ var _ = BeforeSuite(func(done Done) {
 
 	var err error
 	env, err = eventtest.NewEnvironment(eventtest.EnvironmentOptions{
-		AddFunc: eventconnections.Add,
+		AddFunc:      eventconnections.Add,
 		MediatorName: "example",
 	})
 	Expect(err).ToNot(HaveOccurred())
@@ -54,6 +54,8 @@ var _ = AfterSuite(func() {
 var _ = Describe("EventConnectionsController", func() {
 	timeout := 30 * time.Second
 	interval := 1 * time.Second
+	mediator1Url := "https://mediator1/mediation1"
+	mediator2Url := "https://mediator2/mediation1"
 
 	key := types.NamespacedName{
 		Name:      "example",
@@ -74,10 +76,10 @@ var _ = Describe("EventConnectionsController", func() {
 					{
 						Https: &[]v1alpha1.HttpsEndpoint{
 							{
-								Url: "https://mediator1/mediation1",
+								Url: &mediator1Url,
 							},
 							{
-								Url: "https://mediator2/mediation1",
+								Url: &mediator2Url,
 							},
 						},
 					},
