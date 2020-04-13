@@ -114,6 +114,8 @@ spec:
                     properties:
                       secret:
                         type: string
+                      webhookSecret:
+                        type: string
                     type: object
                 type: object
               type: array
