@@ -41,7 +41,6 @@ oc-deploy: build-image push-image
 
 oc-undeploy:
 	oc delete deployment events-operator
-	oc delete deploy webhook mediator1 mediator2
 
 debug: .apply-crds
 	operator-sdk run --local --enable-delve --operator-flags="$(OPERATOR_FLAGS)"

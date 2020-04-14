@@ -680,7 +680,7 @@ func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.
 
             for _, repo := range *mediator.Spec.Repositories {
                 if repo.Github != nil {
-                    err = utils.ValidatePayload(sigType, sig, repo.Github.Secret, body)
+                    err = utils.ValidatePayload(sigType, sig, repo.Github.WebhookSecret, body)
 
                     // Found a secret that validates the payload
                     if err == nil {
