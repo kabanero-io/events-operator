@@ -1,47 +1,46 @@
 package eventmediator
 
 import (
-	"context"
+    "context"
+    "io/ioutil"
 
-    routev1 "github.com/openshift/api/route/v1"
-	eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
-    kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
-	"github.com/kabanero-io/events-operator/pkg/eventenv"
-	"github.com/kabanero-io/events-operator/pkg/eventcel"
-    "github.com/kabanero-io/events-operator/pkg/utils"
-	corev1 "k8s.io/api/core/v1"
-    appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    // "k8s.io/client-go/kubernetes"
-	"k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-    "k8s.io/apimachinery/pkg/util/intstr"
-    logf "sigs.k8s.io/controller-runtime/pkg/log"
     "github.com/go-logr/logr"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
+    eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+    "github.com/kabanero-io/events-operator/pkg/event"
+    "github.com/kabanero-io/events-operator/pkg/eventcel"
+    "github.com/kabanero-io/events-operator/pkg/eventenv"
+    "github.com/kabanero-io/events-operator/pkg/listeners"
+    "github.com/kabanero-io/events-operator/pkg/utils"
+    kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
+    routev1 "github.com/openshift/api/route/v1"
     "github.com/operator-framework/operator-sdk/pkg/k8sutil"
+    appsv1 "k8s.io/api/apps/v1"
+    corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/errors"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/apimachinery/pkg/types"
+    "k8s.io/apimachinery/pkg/util/intstr"
+    "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/controller"
+    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+    k8sevent "sigs.k8s.io/controller-runtime/pkg/event"
+    "sigs.k8s.io/controller-runtime/pkg/handler"
+    logf "sigs.k8s.io/controller-runtime/pkg/log"
+    "sigs.k8s.io/controller-runtime/pkg/manager"
     "sigs.k8s.io/controller-runtime/pkg/predicate"
-    "sigs.k8s.io/controller-runtime/pkg/event"
+    "sigs.k8s.io/controller-runtime/pkg/reconcile"
+    "sigs.k8s.io/controller-runtime/pkg/source"
 
     triggers "github.com/tektoncd/triggers/pkg/apis/triggers/v1alpha1"
 
-    "k8s.io/klog"
-    // "os"
-    "net/url"
-    "net/http"
     "bytes"
-    "time"
-     "crypto/tls"
-    "strings"
+    "crypto/tls"
     "fmt"
-    //"strconv"
+    "k8s.io/klog"
+    "net/http"
+    "strings"
+    "time"
 )
 
 const (
@@ -76,17 +75,17 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 
     controllerPredicate := predicate.Funcs{
-        UpdateFunc: func(e event.UpdateEvent) bool {
+        UpdateFunc: func(e k8sevent.UpdateEvent) bool {
             // Ignore status updates
-            return e.MetaOld.GetGeneration() != e.MetaNew.GetGeneration() 
+            return e.MetaOld.GetGeneration() != e.MetaNew.GetGeneration()
         },
-        CreateFunc: func(e event.CreateEvent) bool {
+        CreateFunc: func(e k8sevent.CreateEvent) bool {
             return true
         },
-        DeleteFunc: func(e event.DeleteEvent) bool {
+        DeleteFunc: func(e k8sevent.DeleteEvent) bool {
             return true
         },
-        GenericFunc: func(e event.GenericEvent) bool {
+        GenericFunc: func(e k8sevent.GenericEvent) bool {
             return true
         },
     }
@@ -205,7 +204,7 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 
     env := eventenv.GetEventEnv()
     if env.IsOperator {
-        result, err := r.reconcileOperator(request, instance, reqLogger) 
+        result, err := r.reconcileOperator(request, instance, reqLogger)
         return result, err
     } else {
         /* plain controller for one mediator */
@@ -217,10 +216,20 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
             if instance.Spec.CreateListener {
                 port :=  getListenerPort(instance)
                 key := eventsv1alpha1.MediatorHashKey(instance)
-                err = env.ListenerMgr.NewListenerTLS(env, port, key, "", "", processMessage)
+                workerQueue := event.NewQueue()
+                listenerHandler, err := validateMessageHandler(key, event.EnqueueHandler(workerQueue))
+                if err != nil {
+                    return reconcile.Result{}, err
+                }
+                err = env.ListenerMgr.NewListenerTLS(listenerHandler, listeners.ListenerOptions{
+                    Port: port,
+                })
                 if err != nil {
                      return reconcile.Result{}, err
                 }
+
+                // Start the queue worker
+                go event.ProcessQueueWorker(workerQueue, generateMessageHandler(env, key))
             }
         }
     }
@@ -399,7 +408,7 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
         {
              Name: eventenv.MEDIATOR_NAME_KEY,
              Value: mediator.Name,
-        }, 
+        },
         {
              Name: "POD_NAME",
              ValueFrom:  &corev1.EnvVarSource {
@@ -542,6 +551,8 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
     return false
 }
 
+
+
 /* Check if the mediation should be used to process this event
   Input:
        mediationImpl: the mediation to match
@@ -554,11 +565,12 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
    bool: true if mediation should be used. A mediation matches if :
       - A selector is not present, and the name of the mediation matches the path
       - A selector is present, and 
-          - the urlPattern, if specified, matches the path. If not specified, the name of the mediation matches the path.
-          - the repository marker file, if specified, is found. 
+        - the urlPattern, if specified, matches the path. If not specified, the name of the mediation matches the path.
+        - the repository marker file, if specified, is found.
    bool: true if repository marker file is specified
-   map[string]interface{}: content of the repository marker file, if the repository marker file is specified and exists.  An error message is returned if the marker file is specified, but there is a problem in locating and reading it.
-   
+   map[string]interface{}: content of the repository marker file, if the repository marker file is specified and exists.
+                           An error message is returned if the marker file is specified, but there is a problem in
+                           locating and reading it.
 */
 func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
     body map[string]interface{}, path string, kubeClient client.Client, namespace string) (error, bool, bool, map[string]interface{}) {
@@ -576,7 +588,7 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
             klog.Infof("no url pattern, matching %s and %s", mediationImpl.Name, path)
             urlPatternMatch = mediationImpl.Name == path
         }  else {
-            klog.Infof("urlpattern specified, matching %s and %s", selector.UrlPattern, path)
+            klog.Infof("urlPattern specified, matching %s and %s", selector.UrlPattern, path)
             urlPatternMatch = selector.UrlPattern == path
         }
          klog.Infof("matchResult: %v", urlPatternMatch)
@@ -594,9 +606,9 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
             return fmt.Errorf("newVariable not specified for Selector of Mediation %v", mediationImpl.Name), false, false, emptyMap
         }
 
-        /* Only works with github */
+        /* Only works with GitHub */
         if !utils.IsHeaderGithub(header)  {
-            return fmt.Errorf("Unable to process Non-github message for mediation %v", mediationImpl.Name), false, false, emptyMap
+            return fmt.Errorf("unable to process non-GitHub message for mediation %v", mediationImpl.Name), false, false, emptyMap
         }
 
         yaml, exists, err := utils.DownloadYAML(kubeClient, namespace, header, body, repositoryType.File)
@@ -613,45 +625,126 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
     return nil, false, false, emptyMap
 }
 
-func processMessage(env *eventenv.EventEnv, header map[string][]string, body map[string]interface{}, key string, url *url.URL) error {
-    klog.Infof("In processMessage header: %v, body: %v, key: %v, url: %v, url path %v", header, body, key, url, url.Path)
-    path := url.Path
-    if strings.HasPrefix(path, "/") {
-        path = path[1:]
+func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.Handler, error) {
+    mediator := eventenv.GetEventEnv().EventMgr.GetMediator(mediatorKey)
+
+    // No secrets configured for this mediator, just return the normal handler
+    if mediator.Spec.Repositories == nil || len(*mediator.Spec.Repositories) == 0 {
+        return nextHandler, nil
     }
 
-    mediator := env.EventMgr.GetMediator(key)
     if mediator == nil {
-        klog.Info("No meditor found")
-         // not for us
-         return nil
-    }
-    if  mediator.Spec.Mediations == nil {
-        klog.Info("No mediation within mediator")
-         return nil
+        return nil, fmt.Errorf("no mediator found with key '%s'", mediatorKey)
     }
 
-    for _, mediationsImpl := range *mediator.Spec.Mediations {
-          eventMediationImpl := &mediationsImpl
-          err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, header , body, path, env.Client, env.Namespace)
-          if err != nil {
-              klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
-              return err
-          }
-          if matches {
-              /* process the message */
-              klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
-              processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-              err := processor.ProcessMessage(header, body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration)
-              if err != nil {
-                  klog.Errorf("Error processing mediation %v, error: %v", path, err)
-              }
-              return err
-          }
-    }
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        var eventType event.Type
 
-    klog.Info("No matching mediation")
-    return nil
+        // Determine event type
+        if _, ok := r.Header["X-Github-Event"]; ok {
+            eventType = event.TypeGitHub
+        } else {
+            eventType = event.TypeOther
+        }
+
+        // Handle GitHub events
+        if eventType == event.TypeGitHub {
+            if _, ok := r.Header["X-Hub-Signature"]; !ok {
+                // No signature header -- skip validation
+                nextHandler.ServeHTTP(w, r)
+                return
+            }
+
+            sigHeader := r.Header["X-Hub-Signature"]
+            sigParts := strings.SplitN(sigHeader[0], "=", 2)
+            if len(sigParts) != 2 || sigParts[0] != "sha1" {
+                klog.Errorf("X-Hub-Signature header expected to be in the format sha1=signature, got %s",
+                    sigHeader)
+                return
+            }
+            sigType := sigParts[0]
+            sig := sigParts[1]
+
+            if r.Body == nil {
+                klog.Error("unexpected empty body for event")
+                w.WriteHeader(http.StatusBadRequest)
+                return
+            }
+
+            body, err := ioutil.ReadAll(r.Body)
+            if err != nil {
+                klog.Error("unable to read body of the event")
+                w.WriteHeader(http.StatusBadRequest)
+                return
+            }
+
+            for _, repo := range *mediator.Spec.Repositories {
+                if repo.Github != nil {
+                    err = utils.ValidatePayload(sigType, sig, repo.Github.WebhookSecret, body)
+
+                    // Found a secret that validates the payload
+                    if err == nil {
+                        // XXX: Need to set a new body so the next handler can read the body too
+                        r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+                        nextHandler.ServeHTTP(w, r)
+                        return
+                    }
+                }
+            }
+
+            // X-Hub-Signature set but a valid secret is not configured. Do not process the event.
+            klog.Errorf("found X-Hub-Signature header but a valid secret is not configured -- ignoring request")
+            w.WriteHeader(http.StatusBadRequest)
+            return
+        }
+
+        // Skip validation of unknown event types
+        nextHandler.ServeHTTP(w, r)
+    }), nil
+}
+
+func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
+	return func(event *event.Event) error {
+	    path := event.URL.Path
+        klog.Infof("In message handler: header: %v, body: %v, key: %v, url: %v, url path %v", event.Header, event.Body, key, event.URL, path)
+
+        if strings.HasPrefix(path, "/") {
+            path = path[1:]
+        }
+
+        mediator := env.EventMgr.GetMediator(key)
+        if mediator == nil {
+            klog.Info("No mediator found")
+            // not for us
+            return nil
+        }
+        if mediator.Spec.Mediations == nil {
+            klog.Info("No mediation within mediator")
+            return nil
+        }
+
+        for _, mediationsImpl := range *mediator.Spec.Mediations {
+            eventMediationImpl := &mediationsImpl
+            err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, event.Header , event.Body, path, env.Client, env.Namespace)
+            if err != nil {
+                klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
+                return err
+            }
+            if matches {
+                /* process the message */
+                klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
+                processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
+                err := processor.ProcessMessage(event.Header, event.Body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration)
+                if err != nil {
+                    klog.Errorf("Error processing mediation %v, error: %v", path, err)
+                }
+                return err
+            }
+        }
+
+        klog.Info("No matching mediation")
+        return nil
+    }
 }
 
 
@@ -703,7 +796,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                          }
                      } else {
                      }
-                     klog.Infof("generateSendEventHandler: sending emssage to %v", url)
+                     klog.Infof("generateSendEventHandler: sending message to %v", url)
                      err = sendMessage(url, https.Insecure, timeout,  buf, header)
                      if err != nil  {
                          /* TODO: better way to handle errors */
@@ -718,11 +811,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
 }
 
 func sendMessage(url string, insecure bool, timeout time.Duration, payload []byte, header map[string][]string) error {
-//    if klog.V(6) {
-//        klog.Infof("restProvider: Sending %s", string(payload))
-////    }
-
-    req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+   req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
     if err != nil {
         return err
     }
@@ -835,3 +924,4 @@ func (r *ReconcileEventMediator) reconcileRoute(request reconcile.Request, insta
 */
     return reconcile.Result{}, nil
 }
+
