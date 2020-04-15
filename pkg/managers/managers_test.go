@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+
 func TestEventManager(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Event Manager Suite")

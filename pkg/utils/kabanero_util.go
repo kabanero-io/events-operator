@@ -163,7 +163,6 @@ func GetGitHubSecret(kubeClient client.Client, namespace string, repoURL string)
 		return "", "", err
 	}
 
-
 	secret := getGitHubSecretForRepo(secrets, repoURL)
 	if secret == nil {
 		return "", "", fmt.Errorf("unable to find GitHub token for url: %s", repoURL)
@@ -317,8 +316,8 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
         if listener.Name == currentListener {
              /* found */
              if listener.Status.Address == nil || listener.Status.Address.URL == nil {
-                 klog.Errorf("Found listener %v in namespace %v, but no URL status", currentListener, currentNamespace, err)
-                 return "", currentVersion.String(), fmt.Errorf("Found listener %v in namespace %v, but no URL status", currentListener, currentNamespace, err)
+                 klog.Errorf("Found listener %v in namespace %v, but no URL status: %v", currentListener, currentNamespace, err)
+                 return "", currentVersion.String(), fmt.Errorf("found listener %v in namespace %v, but no URL status %v", currentListener, currentNamespace, err)
              }
              return listener.Status.Address.URL.String(), currentVersion.String(), nil
         }

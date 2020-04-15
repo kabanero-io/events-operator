@@ -36,7 +36,7 @@ type EventRepository struct {
 
 type EventGithubRepository struct {
     Secret string `json:"secret,omitempty"`
-    webhookSecret string `json:"webhookSecret,omitempty"`
+    WebhookSecret string `json:"webhookSecret,omitempty"`
 }
 
 

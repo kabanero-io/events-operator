@@ -20,10 +20,13 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"gopkg.in/yaml.v2"
+	"hash"
 	"io"
 	"io/ioutil"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -202,6 +205,45 @@ func sha256sum(filePath string) (string, error) {
 	}
 
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+type HashFunc func() hash.Hash
+
+func getHash(hashType string) (HashFunc, error) {
+	switch hashType {
+	case "sha1":
+		return sha1.New, nil
+	case "sha256":
+		return sha256.New, nil
+	}
+
+	return nil, fmt.Errorf("unrecognized hash type '%s'", hashType)
+}
+
+func hashPayload(sigType, secret string, payload []byte) (string, error) {
+	h, err := getHash(sigType)
+	if err != nil {
+		return "", err
+	}
+
+	hm := hmac.New(h, []byte(secret))
+	hm.Write(payload)
+	return hex.EncodeToString(hm.Sum(nil)), nil
+}
+
+// ValidatePayload verifies that a payload hashed with some secret matches the expected signature
+func ValidatePayload(sigType, sigHash, secret string, payload []byte) error {
+	hashedPayload, err := hashPayload(sigType, secret, payload)
+	if err != nil {
+		return err
+	}
+
+	if !hmac.Equal([]byte(hashedPayload), []byte(sigHash)) {
+		return fmt.Errorf("payload hash is '%s' but expected '%s'", hashedPayload, sigHash)
+	}
+
+	klog.Infof("Payload validated with signature %s", hashedPayload)
+	return nil
 }
 
 // DecompressGzipTar Decompresses and extracts a tar.gz file.
