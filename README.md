@@ -71,7 +71,12 @@ Its general form looks like :
   mediations:
     - mediation:
         name: <mediation name>
-        input: message
+        variables:
+            - name: <variable-name-1>
+              value: <variable-value-1>
+            - name: <variable-name-2>
+              value: <variable-value-2>
+            ...
         sendTo: [ "destination 1", "destination 2", ...  ]
         body:
            <body>
@@ -80,12 +85,15 @@ Its general form looks like :
 
 The attributes are:
 
-- name: the name of the mediation. Note that the URL to the mediator must include the mediation name as the component of
-  the path.
-- input: Name of the variable to store the input message. If the input comes from a https listener, the body of the
-  message is stored in `message.body`, and the header of the message is stored in `message.header`.
-- sendTo: list of variable names for destinations to send output message.
+- name: the name of the mediation. Note that the URL to the mediator must include the mediation name as the component of the path.
+- variables: predefined name/value pairs that may be used as predefined variables within the `body` of the mediation.
+- sendTo: list of variable names that represent destinations to send output message.
 - body: body that contains code based on Common Expression Language (CEL) to process the message.
+
+Two additional implicitly pre-defined variables are also available for a mediation:
+
+- `body`: body of the incoming message
+- `header`: HTTP header of the incoming message.
 
 The `body` of a mediation is an array of JSON objects, where each object may contain one or multiples of:
 
@@ -115,11 +123,11 @@ spec:
             =: "attrValue = body.attr"
           - switch:
               - if : ' attrValue == "value1" '
-                =: "sendEvent(dest1, message)"
+                =: "sendEvent(dest1, body, header)"
               - if : 'attrValue == "value2" '
-                =: "sendEvent(dest2, message)"
+                =: "sendEvent(dest2, body, header)"
               - default:
-                =: "sendEvent(dest3, message)"
+                =: "sendEvent(dest3, body, header)"
 ```
 
 More formally,
@@ -133,11 +141,12 @@ More formally,
   - `switch` and `body`: The body must be array of JSON objects, where each element of the array is either an `if`
     statement, or a `default` statement.
 
-Below are examples of assignments. Note that variable is optional.
+Below are examples of assignments. 
+Note that variable name is optional.
 
 ```yaml
 =: 'attrValue = 1"
-=: " sendEvent(dest, message)
+=: " sendEvent(dest, body, header)
 ```
 
 The first variation of an `if` statement:
@@ -153,7 +162,7 @@ And second variation of an `if` statement with a `body`:
 - if : ' attrvalue == "value1" '
   body:
     - =: "attr = "value1""
-    - =: "sendEvent(dest1, message)"
+    - =: "sendEvent(dest1, body, header)"
 ```
 
 An example of `switch` statement:
@@ -161,16 +170,20 @@ An example of `switch` statement:
 ```yaml
 - switch:
   - if : ' attrvalue == "value1" '
-    =: "sendEvent(dest1, message)"
+    =: "sendEvent(dest1, body, header)"
   - if : 'attrValue == "value2" '
-    =: "sendEvent(dest2, message)"
+    =: "sendEvent(dest2, body, header)"
   - default:
-    =: "sendEvent(dest3, message)"
+    =: "sendEvent(dest3, body, header)"
 ```
 
-#### Build-in functions
+#### Built-in functions
 
 
+Additional bult-in functions are provided to falicitate event processing and routing. 
+These are in addition to stanard functions in the Common Expression Language.
+
+<!--
 ##### filter
 
 The `filter` function returns a new map or array with some elements of the original map or array filtered out.
@@ -229,7 +242,7 @@ functions:
           - default:
             - =: 'output=  input + call("sum", input- 1)'
 ```
-
+-->
 
 ##### sendEvent
 
@@ -237,11 +250,9 @@ The sendEvent function sends an event to a destination.
 
 Input:
 
-- destination: destination to send the event
-- message: a JSON compatible message. If the message is to be delivered through http(s), the message should contain two
-  attributes:
-  - body: the body of a REST-ful message
-  - header: the header for the REST-ful message
+- destination: destination variable to send the event
+- body: a JSON compatible message body of message.
+- header: HTTP header for the message.
 
 
 Output: empty string if OK, otherwise, error message
@@ -249,10 +260,11 @@ Output: empty string if OK, otherwise, error message
 Example:
 
 ```yaml
-  - =: 'result=  sendEvent("tekton-listener", message )'
+  - =: 'sendEvent(tekton-listener, body, header)'
 ```
 
 
+<!--
 ##### jobID
 
 The `jobID` function returns a new unique string each time it is called.
@@ -294,10 +306,11 @@ Example:
 ```
 
 After split, the variable components contains `[ "a", "b", "c" ]`.
+-->
 
 ### Event Connections
 
-Event connections maps the destinations of mediations to real endpoints. Currently only https endpoints are supported.
+Event connections map the destinations of mediations to real endpoints. Currently only https endpoints are supported.
 
 Given the mediator with mediation named `webhook` below:
 
@@ -314,7 +327,7 @@ spec:
         name: webhook
         sendTo: [ "dest"  ]
         body:
-          - = : 'sendEvent(dest, message)'
+          - = : 'sendEvent(dest, body, header)'
 ```
 
 The connection specification may look like:
@@ -335,7 +348,7 @@ spec:
         - https:
             - url: https://mediator1/mediation1
               insecure: true
-            - url: https://mediator2/mediation1
+            - urlExpression: cel_variable
               insecure: true
 ```
 
@@ -348,6 +361,10 @@ The `from` attribute specifies:
 The `to` attribute currently only supports https endpoints. The url may be any REST endpoint. If pointing to another
 mediator, the other mediator's `createListener` attribute must be set to `true`, and the URL to use is:
 `https://<service-name>/<mediation name>`, where `<service-name>` is the name of the mediator.
+
+The `urlExpression`  is used to enable dynamically generated destinations. 
+It is an Common Expression Language expression evaluated within the scope of the meidation, and may use any variable that is available or created within the body of the mediation. 
+For our example above, it evaluates to the value of the variable `cel_variable`.
 
 
 <a name="webhook-processing"></a>
@@ -368,45 +385,49 @@ spec:
   repositories:
     - github:
         secret: your-github-secret
+        webhookSecret: my-webhook-secret
   mediations:
     - mediation:
         name: appsody
         selector:
-          - urlPattern: /webhook
+          - urlPattern: webhook
           - repositoryType:
             file: .type1.yaml
             newVariable: message.body.webhooks-type1
         sendTo: [ "dest"  ]
         variables:
           - name: message.body.webhooks-tekton-service-account
+            value: kabanero-pipeline
           body:
-              - = : 'sendEvent(dest, message)'
+              - = : 'sendEvent(dest, body, header)'
     - mediation:
         name: gitops
         selector:
-          - urlPattern: /webhook
+          - urlPattern: webhook
           - repositoryType:
             name: message.body.webhooks-type2
             file: .type2.yaml
         sendTo: [ "dest"  ]
         body:
-          - = : 'sendEvent(dest, message)'
+          - = : 'sendEvent(dest, body, header)'
   ```
 
-The `repositories` attribute defines repository related configuration. For `github` repository, you may define a secret
-to verify the authenticity of the webhook originator. It is the same secret you specified when configuring the webhook
+The `repositories` attribute defines repository related configuration. For `github` repository, 
+
+- `secret` points to a Kubernetes `Secret`. It has the same format as the Tekton user name/password secret, where username is the user name is the user name to Github, and passwor dis the Api key to access github. 
+- `webhookSecret` is used to authenticate the originator of the webhook message. It is the same secret you specified when configuring the webhook
 on github.
 
 The `selector` defines which mediation to call based on the specified criteria:
 
 - The `urlPattern` matches the pattern to the incoming URL. Currently only exact match is supported.
-- The `repositoryType` matches the type of the repository. The mediation is called only if the specified `file` exists
-  in the repository. In addition, the content of the `file` is read and bound to the the variable `newVariable`.
+- The `repositoryType` matches the type of the repository. The mediation is called only if the specified `file` exists in the repository. 
+In addition, the content of the `file` is read and bound to the the variable `newVariable`.
 
-The `varibles` section creates new variables whose values are CEL expressions.
+The `varibles` section creates new variables.
 
-In addition, the mediation automatically adds additional predefined variables to the body of the incoming message after
-the creation of the repository variables. Though these variables are meant to be used for Tekton event listeners, they
+In addition, the mediation automatically adds additional predefined variables to the body of the incoming message after the creation of the repository variables. 
+Though these variables are meant to be used for Tekton event listeners, they
 are generic enough to be used by other downstream listeners as well.
 
 - `body.webhooks-tekton-git-server`:  The name of the incoming git server. For example, `github.com`
@@ -418,9 +439,8 @@ are generic enough to be used by other downstream listeners as well.
 
 When processing an incoming webhook message, the flow is as follows:
 
-- The github secret is used to authenticate the sender.
-- The variables `message` with nested attributes `body` and `header` are created to store the body and header of the
-  message.
+- The github secret, if set, is used to authenticate the sender.
+- The variables `body` and `header` are created to store the body and header of the message.
 - The selector is evaluated in turn to locate the matching mediation.
 - The pre-defined variables are created.
 - The `variables` section are evaluated in order.
