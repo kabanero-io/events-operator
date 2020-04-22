@@ -248,9 +248,9 @@ Return:
    error : if any error occurred when matching the repository to an event listener
 */
 func FindEventListenerForStack(kubeClient client.Client, namespace string, repoStackImage string, repoStackVersion string) (string, string, error) {
-//    if true {
-//        return "http://el-listener-mcheng.tekton-pipelines.svc.cluster.local:8080", "0.2.0", nil
-//    }
+    if true {
+        return "http://el-listener-mcheng.tekton-pipelines.svc.cluster.local:8080", "0.2.0", nil
+    }
 
 	if klog.V(8) {
 		klog.Infof("FindEventListenerForStack namespace: %s, reposStackImage: %v, repoStackVersion: %v", namespace, repoStackImage, repoStackVersion)

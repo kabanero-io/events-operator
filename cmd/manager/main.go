@@ -36,6 +36,7 @@ import (
    "github.com/kabanero-io/events-operator/pkg/eventenv"
    "github.com/kabanero-io/events-operator/pkg/connections"
    "github.com/kabanero-io/events-operator/pkg/listeners"
+   "github.com/kabanero-io/events-operator/pkg/status"
 
     routev1 "github.com/openshift/api/route/v1"
 
@@ -142,6 +143,7 @@ func main() {
         EventMgr: managers.NewEventManager(),
         ConnectionsMgr: connections.NewConnectionsManager(),
         ListenerMgr: listeners.NewDefaultListenerManager(),
+        StatusMgr: status.NewStatusManager(),
         IsOperator:  isOperator,
         MediatorName: mediatorName,
         Namespace: operatorNamespace,
