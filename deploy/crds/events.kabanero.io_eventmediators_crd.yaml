@@ -148,6 +148,9 @@ spec:
                     type: string
                   result:
                     type: string
+                  time:
+                    format: date-time
+                    type: string
                 required:
                 - input
                 - message

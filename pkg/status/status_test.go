@@ -60,7 +60,7 @@ func TestDuplicateStatus(t *testing.T) {
 
     arraySummary := make([]eventsv1alpha1.EventStatusSummary , 0)
 
-    /* append firs time */
+    /* append first time */
     for i := 0; i < MAX_RETAINED_MESSAGES; i++ {
          summary := &eventsv1alpha1.EventStatusSummary {
              Operation: strconv.Itoa(i),
@@ -72,9 +72,12 @@ func TestDuplicateStatus(t *testing.T) {
          statusMgr.AddEventSummary(summary)
     }
 
-    /* append second time */
+    /* append second time, in reverse order */
+    arraySummary1 := make([]eventsv1alpha1.EventStatusSummary , 0)
     for i := MAX_RETAINED_MESSAGES-1; i>=0 ; i-- {
-         statusMgr.AddEventSummary(&arraySummary[i])
+         summary := arraySummary[i]
+         statusMgr.AddEventSummary(&summary)
+         arraySummary1 = append(arraySummary1, arraySummary[i])
     }
 
     resultSummary := statusMgr.getStatusSummary()
@@ -83,7 +86,9 @@ func TestDuplicateStatus(t *testing.T) {
          t.Fatalf("Cached Status length %v does not matched expected length %v", resultLen, MAX_RETAINED_MESSAGES)
     }
 
-    if !compareList(arraySummary, resultSummary) {
+    if !compareList(arraySummary1, resultSummary) {
+         printList(arraySummary1)
+         printList(resultSummary)
          t.Fatalf("Cached Status did not match expected")
     }
 }
@@ -146,33 +151,35 @@ func TestOverflowDuplicate(t *testing.T) {
          statusMgr.AddEventSummary(summary)
     }
 
-    /* Update odd entries. This will refresh their timestamp */
+    /* Update even entries. This will refresh their timestamp, and push them down the list. */
     for i := 0; i < MAX_RETAINED_MESSAGES; i += 2 {
-         statusMgr.AddEventSummary(&arraySummary[i])
+         summary := arraySummary[i]
+         statusMgr.AddEventSummary(&summary)
     }
+    // printList(statusMgr.getStatusSummary())
 
-    /* Update 1/2 of the entries. This will update the even entries. Odd entries will be replaced earlier. */
+    /* Update 1/2 of the entries. The top bottom half will be the new entries, and the top half the old even entries */
     for i := 0; i < MAX_RETAINED_MESSAGES/2; i++ {
-         /* The expected first half will be the even entries */
+         /* The expected first half will be the new entries */
          summary := &eventsv1alpha1.EventStatusSummary {
+             Operation: strconv.Itoa(i+ MAX_RETAINED_MESSAGES),
+             Input: make([]eventsv1alpha1.EventStatusParameter,0),
+             Result: "",
+             Message:"",
+         }
+         arraySummary[i+MAX_RETAINED_MESSAGES/2] = *summary 
+         statusMgr.AddEventSummary(summary)
+         // fmt.Printf("Iteration %v: ", i)
+         // printList(statusMgr.getStatusSummary())
+
+         /* The expected top half will be the prevous even entries */
+         summary = &eventsv1alpha1.EventStatusSummary {
              Operation: strconv.Itoa(i*2),
              Input: make([]eventsv1alpha1.EventStatusParameter,0),
              Result: "",
              Message:"",
          }
          arraySummary[i] = *summary // update expected result
-
-
-         /* The expected 2nd half will be the new entries being added */
-         num := i + MAX_RETAINED_MESSAGES
-         summary = &eventsv1alpha1.EventStatusSummary {
-             Operation: strconv.Itoa(num),
-             Input: make([]eventsv1alpha1.EventStatusParameter,0),
-             Result: "",
-             Message:"",
-         }
-         arraySummary[i+MAX_RETAINED_MESSAGES/2] = *summary // update expected result
-         statusMgr.AddEventSummary(summary)
     }
 
     resultSummary := statusMgr.getStatusSummary()

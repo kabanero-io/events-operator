@@ -20,6 +20,7 @@ import (
     "container/list"
     "time"
     "sync"
+//    "fmt"
 )
 
 const (
@@ -47,20 +48,32 @@ func NewStatusManager() *StatusManager {
     return sm
 }
 
+/* Add an EventSummary. 
+input:
+   summary: the summary to add. The caller no longer owns the summary after calling.
+*/
 func (sm *StatusManager) AddEventSummary(summary *eventsv1alpha1.EventStatusSummary) {
     sm.mutex.Lock()
     defer sm.mutex.Unlock()
 
-    var elem *list.Element
-    for elem = sm.summaryList.Front(); elem != nil; elem = elem.Next() {
-         summaryElem, ok := elem.Value.(*summaryElement)
+    // fmt.Printf("AddEventSummary: inserting %v\n", summary.Operation)
+    /* set the time of update */
+    summary.Time.Time = time.Now()
+
+    // fmt.Printf("AddEventSummary: checking: ")
+    for elem := sm.summaryList.Front(); elem != nil; elem = elem.Next() {
+         summaryElem, ok := elem.Value.(*eventsv1alpha1.EventStatusSummary)
          if !ok {
               // should not happen
               return
          }
-         if summaryElem.summary.Equals(summary) {
-             /* no change. Just update timestampe  */
-             summaryElem.timestamp = time.Now()
+         // fmt.Printf("%v ", summaryElem.Operation)
+         if summaryElem.Equals(summary) {
+             /* Duplicate. Move the element to the back */
+             // fmt.Printf("AddEventSummary: duplicate found %v %v\n", summaryElem.Operation, summary.Operation)
+             sm.summaryList.Remove(elem)
+             sm.summaryList.PushBack(summary)
+             sm.needsUpdate = true
              return
          }
     }
@@ -68,30 +81,14 @@ func (sm *StatusManager) AddEventSummary(summary *eventsv1alpha1.EventStatusSumm
     /* summary did not repeat. */
     if sm.summaryList.Len() >= MAX_RETAINED_MESSAGES {
         /* Delete earliest one */
-        earliestTime := time.Now()
-        var toDelete *list.Element = nil
-        for elem = sm.summaryList.Front(); elem != nil; elem = elem.Next() {
-            summaryElem, ok := elem.Value.(*summaryElement)
-            if !ok {
-                // should not happen
-                return
-            }
-            if summaryElem.timestamp.Before(earliestTime) || summaryElem.timestamp.Equal(earliestTime) {
-                 earliestTime = summaryElem.timestamp
-                 toDelete = elem
-            }
-        }
-        if toDelete != nil {
-            sm.summaryList.Remove(toDelete)
+        front := sm.summaryList.Front()
+        if front != nil {
+            sm.summaryList.Remove(front)
         }
     }
 
-    /* Add a new one */
-    newElem := &summaryElement {
-        summary : summary,
-        timestamp: time.Now(),
-    }
-    sm.summaryList.PushBack(newElem)
+    /* Append the new one */
+    sm.summaryList.PushBack(summary)
     sm.needsUpdate = true
 }
 
@@ -103,11 +100,11 @@ func (sm *StatusManager) getStatusSummary() []eventsv1alpha1.EventStatusSummary 
     ret := make([]eventsv1alpha1.EventStatusSummary,0)
     var elem *list.Element
     for elem = sm.summaryList.Front(); elem != nil; elem = elem.Next() {
-         summaryElem, ok := elem.Value.(*summaryElement)
+         summaryElem, ok := elem.Value.(*eventsv1alpha1.EventStatusSummary)
          if !ok {
               break
          }
-         ret = append(ret, *summaryElem.summary)
+         ret = append(ret, *summaryElem)
     }
     return ret
 }

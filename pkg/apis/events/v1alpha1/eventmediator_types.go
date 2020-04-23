@@ -107,12 +107,14 @@ type EventStatusParameter struct {
 }
 
 type EventStatusSummary struct {
+    Time metav1.Time `json:"time,omitempty"`
     Operation string `json:"operation"`
     Input []EventStatusParameter `json:"input"`
     Result string `json:"result"`
     Message string `json:"message"`
 }
 
+/* Equality without taking time into account */
 func (es *EventStatusSummary ) Equals(other *EventStatusSummary) bool {
     if es.Operation != other.Operation {
         return false
