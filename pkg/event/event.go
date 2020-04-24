@@ -19,6 +19,7 @@ const (
 // Event contains the destination URL, headers, and a body
 type Event struct {
 	URL    *url.URL
+    RemoteAddr string
 	Header map[string][]string
 	Body   map[string]interface{}
 }
@@ -62,6 +63,7 @@ func EnqueueHandler(queue Queue) http.HandlerFunc {
 
 		queue.Enqueue(&Event{
 			URL:    r.URL,
+            RemoteAddr: r.RemoteAddr,
 			Header: r.Header,
 			Body:   bodyMap,
 		})

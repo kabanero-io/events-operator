@@ -20,11 +20,33 @@ import (
     "container/list"
     "time"
     "sync"
+    "k8s.io/klog"
 //    "fmt"
 )
 
 const (
     MAX_RETAINED_MESSAGES = 100 // maximum number of messages to retain
+
+   /* Operations names */
+   OPERATION_VALIDATE_WEBHOOK_SECRET = "validate webhook secret"
+   OPERATION_RESOLVE_REPOSITORY_TYPE = "resolve repository type"
+   OPERATION_FIND_MEDIATION = "find mediation"
+   OPERATION_INITIALIZE_VARIABLES = "initialize mediation variables"
+   OPERATION_EVALUATE_MEDIATION = "evaluate mediation"
+   OPERATION_SEND_EVENT = "send event"
+
+   /* Parameter names */
+   PARAM_FROM = "from"
+   PARAM_MEDIATION = "mediation"
+   PARAM_FILE = "file"
+   PARAM_DESTINATION = "destination"
+   PARAM_URL = "url"
+   PARAM_URLEXPRESSION = "urlExpression"
+
+   /* Results */
+   RESULT_FAILED = "failed"
+   RESULT_COMPLETED = "completed"
+
 )
 
 
@@ -55,6 +77,9 @@ input:
 func (sm *StatusManager) AddEventSummary(summary *eventsv1alpha1.EventStatusSummary) {
     sm.mutex.Lock()
     defer sm.mutex.Unlock()
+
+    klog.Infof("AddEventSummary: %v", *summary)
+
 
     // fmt.Printf("AddEventSummary: inserting %v\n", summary.Operation)
     /* set the time of update */
