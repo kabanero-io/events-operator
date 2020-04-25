@@ -17,6 +17,8 @@ package status
 
 import (
     eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+    "github.com/kabanero-io/events-operator/pkg/utils"
+    "sigs.k8s.io/controller-runtime/pkg/client"
     "container/list"
     "time"
     "sync"
@@ -132,4 +134,96 @@ func (sm *StatusManager) getStatusSummary() []eventsv1alpha1.EventStatusSummary 
          ret = append(ret, *summaryElem)
     }
     return ret
+}
+
+/* The Status Updater is used to update status in a resource efficient manner.
+   Status changes are not updated immediately. Instead, they are accumulated for up to a configurable time.
+   In addition, there is no polling thread to check for status updates.
+  */
+type Updater struct {
+    duration time.Duration // how long to wait for changes before updating to Kubernetes
+    client client.Client // controller client
+    timerStarted bool // true if timer started
+    timerChan chan struct{} // channel for timer
+    statusChan chan *[]eventsv1alpha1.EventStatusSummary // channel to send status update
+
+    summary *[]eventsv1alpha1.EventStatusSummary  // latest summary
+
+    mutex sync.Mutex
+}
+
+func NewSatusUpdater(client client.Client, namespace, string, name string, duration time.Duration) *Updater {
+    updater := &Updater {
+        client: client,
+        duration: duration,
+        timerStarted: false,
+        timerChan: make(chan struct{}, 1),
+        statusChan: make(chan *[]eventsv1alpha1.EventStatusSummary),
+        summary: nil,
+    }
+
+    // Thread to update status
+    go func() {
+        for  {
+             status := updater.getStatus()
+             err := utils.UpdateStatus(updater.client, namespace, name, *status)
+             if err != nil {
+                updater.putBack(status)
+             }
+        }
+    }()
+    return updater
+}
+
+/* Put back what was processed. */
+func (updater *Updater) putBack(summary *[]eventsv1alpha1.EventStatusSummary) {
+    updater.mutex.Lock()
+    defer updater.mutex.Unlock()
+
+    /* Put back only if there is nothing newer */
+    if updater.summary == nil {
+        updater.summary = summary
+        updater.startTimer()
+    }
+}
+
+/* Get available status. Block if needed. */
+func (updater *Updater) getStatus() *[]eventsv1alpha1.EventStatusSummary {
+    for {
+         select {
+              case summary, _:= <- updater.statusChan:
+                  updater.mutex.Lock()
+                  updater.summary = summary
+                  updater.startTimer()
+                  updater.mutex.Unlock()
+              case <- updater.timerChan:
+                  updater.mutex.Lock()
+                  ret := updater.summary
+                  if ret != nil {
+                      updater.summary = nil
+                  }
+                  updater.mutex.Unlock()
+                  if ret != nil {
+                      return ret
+                  } 
+         }
+    }
+
+}
+
+/* Send Update */
+func (updater *Updater) SendUpdate(summary []eventsv1alpha1.EventStatusSummary) {
+    updater.statusChan <- &summary
+}
+
+func (updater *Updater) startTimer() {
+    if !updater.timerStarted {
+        updater.timerStarted = true
+        timerChan := updater.timerChan
+        duration := updater.duration
+        go func() {
+            time.Sleep(duration)
+            timerChan <- struct{}{}
+        }()
+    }
 }

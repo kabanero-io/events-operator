@@ -20,6 +20,7 @@ import (
     "context"
 	"fmt"
 	kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
+    eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
     "github.com/kabanero-io/events-operator/pkg/semverimage"
 	"k8s.io/client-go/rest"
 	"net/url"
@@ -328,3 +329,19 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
     return "", currentVersion.String(), nil
 }
 
+/* Update status for mediator */
+func UpdateStatus(ctrlClient client.Client, namespace string, name string, summary []eventsv1alpha1.EventStatusSummary) error {
+
+    objectKey := client.ObjectKey { Namespace: namespace, Name: name }
+    mediator := &eventsv1alpha1.EventMediator {}
+    err := ctrlClient.Get(context.Background(), objectKey, mediator)
+    if err != nil {
+        return err
+    }
+    mediator.Status.Summary = summary
+    err = ctrlClient.Status().Update(context.Background(),mediator)
+    if err != nil {
+         return err
+    }
+    return nil
+}

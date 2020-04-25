@@ -98,7 +98,7 @@ type EventMediatorStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-    UnorderedSummary []EventStatusSummary `json:"unorderedSummary"`
+    Summary []EventStatusSummary `json:"summary"`
 }
 
 type EventStatusParameter struct {
