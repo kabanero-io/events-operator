@@ -573,7 +573,7 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
                            An error message is returned if the marker file is specified, but there is a problem in
                            locating and reading it.
 */
-func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
+func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
     body map[string]interface{}, path string, kubeClient client.Client, namespace string, remoteAddr string) (error, bool, bool, map[string]interface{}) {
     klog.Infof("mediationMatches for  path %s", path)
 
@@ -626,7 +626,16 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
             return fmt.Errorf("unable to process non-GitHub message for mediation %v", mediationImpl.Name), false, false, emptyMap
         }
 
-        yaml, exists, err := utils.DownloadYAML(kubeClient, namespace, header, body, repositoryType.File)
+        var secretName string = ""
+        if mediator.Spec.Repositories != nil {
+            for _, repo := range *mediator.Spec.Repositories {
+                if repo.Github != nil {
+                     secretName = repo.Github.Secret
+                     break
+                }
+            }
+        }
+        yaml, exists, err := utils.DownloadYAML(kubeClient, namespace, secretName, header, body, repositoryType.File)
         if err != nil {
             // error reading the yaml
             summary := &eventsv1alpha1.EventStatusSummary  {
@@ -768,7 +777,7 @@ func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
 
         for _, mediationsImpl := range *mediator.Spec.Mediations {
             eventMediationImpl := &mediationsImpl
-            err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, event.Header , event.Body, path, env.Client, env.Namespace, event.RemoteAddr )
+            err, matches, hasRepoType, repoTypeValue := mediationMatches(mediator, eventMediationImpl, event.Header , event.Body, path, env.Client, env.Namespace, event.RemoteAddr )
             if err != nil {
                 klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
                 return err

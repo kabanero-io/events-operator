@@ -119,10 +119,13 @@ func getRepositoryInfo(body map[string]interface{}, repositoryEvent string) (str
 
 /*
 DownloadYAML Downloads a YAML file from a git repository.
+  kubeClient: controller client to API server
+  namespace: namespace to look for secret to github
+  secretName name of the secret containing the token to access github
   header: HTTP header from webhook
   bodyMap: HTTP  message body from webhook
 */
-func DownloadYAML(kubeClient client.Client, namespace string, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
+func DownloadYAML(kubeClient client.Client, namespace string, secretName string, header map[string][]string, bodyMap map[string]interface{}, fileName string) (map[string]interface{}, bool, error) {
 
 	hostHeader, isEnterprise := header[http.CanonicalHeaderKey("x-github-enterprise-host")]
 	var host string
@@ -139,7 +142,7 @@ func DownloadYAML(kubeClient client.Client, namespace string, header map[string]
 		return nil, false, fmt.Errorf("unable to get repository owner, name, or html_url from webhook message: %v", err)
 	}
 
-	user, token, err := GetGitHubSecret(kubeClient, namespace, htmlURL)
+	user, token, err := GetGitHubSecret(kubeClient, namespace, secretName,  htmlURL)
 	if err != nil {
 		return nil, false, fmt.Errorf("unable to get user/token secret for URL %s: %v", htmlURL, err)
 	}
