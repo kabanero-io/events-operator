@@ -30,12 +30,12 @@ const (
     MAX_RETAINED_MESSAGES = 100 // maximum number of messages to retain
 
    /* Operations names */
-   OPERATION_VALIDATE_WEBHOOK_SECRET = "validate webhook secret"
-   OPERATION_RESOLVE_REPOSITORY_TYPE = "resolve repository type"
-   OPERATION_FIND_MEDIATION = "find mediation"
-   OPERATION_INITIALIZE_VARIABLES = "initialize mediation variables"
-   OPERATION_EVALUATE_MEDIATION = "evaluate mediation"
-   OPERATION_SEND_EVENT = "send event"
+   OPERATION_VALIDATE_WEBHOOK_SECRET = "validate-webhook-secret"
+   OPERATION_RESOLVE_REPOSITORY_TYPE = "resolve-repository-type"
+   OPERATION_FIND_MEDIATION = "find-mediation"
+   OPERATION_INITIALIZE_VARIABLES = "initialize-mediation-variables"
+   OPERATION_EVALUATE_MEDIATION = "evaluate-mediation"
+   OPERATION_SEND_EVENT = "send-event"
 
    /* Parameter names */
    PARAM_FROM = "from"
@@ -44,6 +44,10 @@ const (
    PARAM_DESTINATION = "destination"
    PARAM_URL = "url"
    PARAM_URLEXPRESSION = "urlExpression"
+   PARAM_REPOSITORY = "repository"
+   PARAM_BRANCH = "branch"
+   PARAM_GITHUB_EVENT = "github-event"
+   PARAM_STACK = "stack"
 
    /* Results */
    RESULT_FAILED = "failed"
@@ -123,6 +127,13 @@ func (sm *StatusManager) getStatusSummary() []eventsv1alpha1.EventStatusSummary 
     sm.mutex.Lock()
     defer sm.mutex.Unlock()
 
+    return sm.getStatusSummaryHelper()
+}
+
+/*
+Unsynchronized version to fetch status summary
+*/
+func (sm *StatusManager) getStatusSummaryHelper() []eventsv1alpha1.EventStatusSummary {
 
     ret := make([]eventsv1alpha1.EventStatusSummary,0)
     var elem *list.Element
@@ -134,6 +145,19 @@ func (sm *StatusManager) getStatusSummary() []eventsv1alpha1.EventStatusSummary 
          ret = append(ret, *summaryElem)
     }
     return ret
+}
+
+/* Send status to Status Updater if there is a status change
+*/
+func (sm *StatusManager) SendStatus(updater *Updater) {
+    sm.mutex.Lock()
+    defer sm.mutex.Unlock()
+
+    if sm.needsUpdate {
+        summaryArray := sm.getStatusSummaryHelper()
+        updater.SendUpdate(summaryArray)
+        sm.needsUpdate = false
+    }
 }
 
 /* The Status Updater is used to update status in a resource efficient manner.
@@ -152,7 +176,7 @@ type Updater struct {
     mutex sync.Mutex
 }
 
-func NewSatusUpdater(client client.Client, namespace, string, name string, duration time.Duration) *Updater {
+func NewSatusUpdater(client client.Client, namespace string, name string, duration time.Duration) *Updater {
     updater := &Updater {
         client: client,
         duration: duration,
@@ -192,20 +216,21 @@ func (updater *Updater) getStatus() *[]eventsv1alpha1.EventStatusSummary {
     for {
          select {
               case summary, _:= <- updater.statusChan:
+                  klog.Infof("Updater getStatus: Received status")
                   updater.mutex.Lock()
                   updater.summary = summary
                   updater.startTimer()
                   updater.mutex.Unlock()
               case <- updater.timerChan:
                   updater.mutex.Lock()
+                  updater.timerStarted = false
+                  klog.Infof("Updater getStatus: Timer fired, has status: %v", updater.summary != nil)
                   ret := updater.summary
-                  if ret != nil {
-                      updater.summary = nil
-                  }
+                  updater.summary = nil
                   updater.mutex.Unlock()
                   if ret != nil {
                       return ret
-                  } 
+                  }
          }
     }
 
@@ -213,6 +238,7 @@ func (updater *Updater) getStatus() *[]eventsv1alpha1.EventStatusSummary {
 
 /* Send Update */
 func (updater *Updater) SendUpdate(summary []eventsv1alpha1.EventStatusSummary) {
+    klog.Infof("Updater SendUpdate called")
     updater.statusChan <- &summary
 }
 
@@ -226,4 +252,23 @@ func (updater *Updater) startTimer() {
             timerChan <- struct{}{}
         }()
     }
+}
+
+
+type StatusParameters struct {
+   params [] eventsv1alpha1.EventStatusParameter
+}
+
+func NewStatusParameters() *StatusParameters {
+   return  &StatusParameters {
+       params: make([]eventsv1alpha1.EventStatusParameter, 0),
+   }
+}
+
+func (sp *StatusParameters) AddParameter(name string, value string) {
+    sp.params = append(sp.params, eventsv1alpha1.EventStatusParameter { Name: name, Value: value, })
+}
+
+func (sp *StatusParameters) GetStatusParameters() []eventsv1alpha1.EventStatusParameter {
+    return sp.params
 }

@@ -612,9 +612,6 @@ func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eve
             summary := &eventsv1alpha1.EventStatusSummary  {
                  Operation: status.OPERATION_FIND_MEDIATION,
                  Input: []eventsv1alpha1.EventStatusParameter { 
-                            { Name: status.PARAM_FROM,
-                              Value: remoteAddr,
-                            },
                             { Name: status.PARAM_MEDIATION,
                               Value: mediationImpl.Name,
                             },
@@ -641,9 +638,6 @@ func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eve
             summary := &eventsv1alpha1.EventStatusSummary  {
                  Operation: status.OPERATION_FIND_MEDIATION,
                  Input: []eventsv1alpha1.EventStatusParameter { 
-                            { Name: status.PARAM_FROM,
-                              Value: remoteAddr,
-                            },
                             { Name: status.PARAM_MEDIATION,
                               Value: mediationImpl.Name,
                             },
@@ -739,12 +733,9 @@ func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.
             summary := &eventsv1alpha1.EventStatusSummary  {
                  Operation: status.OPERATION_VALIDATE_WEBHOOK_SECRET,
                  Input: []eventsv1alpha1.EventStatusParameter { 
-                            { Name: status.PARAM_FROM,
-                              Value: r.RemoteAddr,
-                            },
                         },
                  Result: status.RESULT_FAILED,
-                 Message: "Webhook secret validation failed.",
+                 Message: "No webbhook secret validates the github payload. Double check webhook secret configuration",
             }
             eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
             return
@@ -757,6 +748,9 @@ func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.
 
 func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
 	return func(event *event.Event) error {
+        // last thing to do in event processing is to update status of the CRD
+        defer env.StatusMgr.SendStatus(env.StatusUpdater)
+
 	    path := event.URL.Path
         klog.Infof("In message handler: header: %v, body: %v, key: %v, url: %v, url path %v", event.Header, event.Body, key, event.URL, path)
 
@@ -842,7 +836,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                  Destination:  destination,
              },
          }
-         eventParams := processor.GetEventStatusParameters()
+         eventParams := processor.GetStatusParameters()
          eventParams = append(eventParams, eventsv1alpha1.EventStatusParameter{ status.PARAM_DESTINATION, destination})
 
          destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
@@ -862,7 +856,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                      timeout, _ := time.ParseDuration("5s")
                      var url string
                      var err error
-                     tempEventParams := eventParams
+                     tempEventParams := processor.GetStatusParameters()
                      if https.Url  != nil {
                          url = *https.Url
                          tempEventParams = append(tempEventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_URL, Value: url})
@@ -874,7 +868,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                                   Operation: status.OPERATION_SEND_EVENT,
                                   Input: tempEventParams,
                                   Result: status.RESULT_FAILED,
-                                  Message: fmt.Sprintf("Unable evaluate urlExpression %v, error: %v", *https.UrlExpression, err),
+                                  Message: fmt.Sprintf("Unable to evaluate urlExpression %v, error: %v", *https.UrlExpression, err),
                              }
                              eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
                              continue
@@ -931,8 +925,8 @@ func sendMessage(url string, insecure bool, timeout time.Duration, payload []byt
     }
 
     defer resp.Body.Close()
-    if resp.StatusCode != http.StatusOK {
-        return fmt.Errorf("res_provider Send to %v failed with http status %v", url, resp.Status)
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+        return fmt.Errorf("Send to %v failed with http status %v", url, resp.Status)
     }
 
     return nil

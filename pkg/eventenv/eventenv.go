@@ -18,6 +18,7 @@ type EventEnv struct {
 	ConnectionsMgr      *connections.ConnectionsManager
 	ListenerMgr         listeners.ListenerManager
     StatusMgr           *status.StatusManager
+    StatusUpdater       *status.Updater
 	MediatorName        string // Kubernetes name of this mediator worker if not ""
 	IsOperator          bool   // true if this instance is an operator, not a worker
 	Namespace           string // namespace we're running under
