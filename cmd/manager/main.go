@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+    "time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -36,6 +37,7 @@ import (
    "github.com/kabanero-io/events-operator/pkg/eventenv"
    "github.com/kabanero-io/events-operator/pkg/connections"
    "github.com/kabanero-io/events-operator/pkg/listeners"
+   "github.com/kabanero-io/events-operator/pkg/status"
 
     routev1 "github.com/openshift/api/route/v1"
 
@@ -137,11 +139,14 @@ func main() {
 
     /* TODO: get image name from the current running pod. We can't do it due to initialization order issue */
     /* Init events execution environment */
+    client := mgr.GetClient()
     env := &eventenv.EventEnv {
-        Client: mgr.GetClient(),
+        Client: client,
         EventMgr: managers.NewEventManager(),
         ConnectionsMgr: connections.NewConnectionsManager(),
         ListenerMgr: listeners.NewDefaultListenerManager(),
+        StatusMgr: status.NewStatusManager(),
+        StatusUpdater: status.NewSatusUpdater(client, operatorNamespace, mediatorName, time.Second*2),
         IsOperator:  isOperator,
         MediatorName: mediatorName,
         Namespace: operatorNamespace,

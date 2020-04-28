@@ -71,7 +71,12 @@ Its general form looks like :
   mediations:
     - mediation:
         name: <mediation name>
-        input: message
+        variables:
+            - name: <variable-name-1>
+              value: <variable-value-1>
+            - name: <variable-name-2>
+              value: <variable-value-2>
+            ...
         sendTo: [ "destination 1", "destination 2", ...  ]
         body:
            <body>
@@ -80,12 +85,15 @@ Its general form looks like :
 
 The attributes are:
 
-- name: the name of the mediation. Note that the URL to the mediator must include the mediation name as the component of
-  the path.
-- input: Name of the variable to store the input message. If the input comes from a https listener, the body of the
-  message is stored in `message.body`, and the header of the message is stored in `message.header`.
-- sendTo: list of variable names for destinations to send output message.
+- name: the name of the mediation. Note that the URL to the mediator must include the mediation name as the component of the path.
+- variables: predefined name/value pairs that may be used as predefined variables within the `body` of the mediation.
+- sendTo: list of variable names that represent destinations to send output message.
 - body: body that contains code based on Common Expression Language (CEL) to process the message.
+
+Two additional implicitly pre-defined variables are also available for a mediation:
+
+- `body`: body of the incoming message
+- `header`: HTTP header of the incoming message.
 
 The `body` of a mediation is an array of JSON objects, where each object may contain one or multiples of:
 
@@ -115,11 +123,11 @@ spec:
             =: "attrValue = body.attr"
           - switch:
               - if : ' attrValue == "value1" '
-                =: "sendEvent(dest1, message)"
+                =: "sendEvent(dest1, body, header)"
               - if : 'attrValue == "value2" '
-                =: "sendEvent(dest2, message)"
+                =: "sendEvent(dest2, body, header)"
               - default:
-                =: "sendEvent(dest3, message)"
+                =: "sendEvent(dest3, body, header)"
 ```
 
 More formally,
@@ -133,11 +141,12 @@ More formally,
   - `switch` and `body`: The body must be array of JSON objects, where each element of the array is either an `if`
     statement, or a `default` statement.
 
-Below are examples of assignments. Note that variable is optional.
+Below are examples of assignments. 
+Note that variable name is optional.
 
 ```yaml
 =: 'attrValue = 1"
-=: " sendEvent(dest, message)
+=: " sendEvent(dest, body, header)
 ```
 
 The first variation of an `if` statement:
@@ -153,7 +162,7 @@ And second variation of an `if` statement with a `body`:
 - if : ' attrvalue == "value1" '
   body:
     - =: "attr = "value1""
-    - =: "sendEvent(dest1, message)"
+    - =: "sendEvent(dest1, body, header)"
 ```
 
 An example of `switch` statement:
@@ -161,16 +170,20 @@ An example of `switch` statement:
 ```yaml
 - switch:
   - if : ' attrvalue == "value1" '
-    =: "sendEvent(dest1, message)"
+    =: "sendEvent(dest1, body, header)"
   - if : 'attrValue == "value2" '
-    =: "sendEvent(dest2, message)"
+    =: "sendEvent(dest2, body, header)"
   - default:
-    =: "sendEvent(dest3, message)"
+    =: "sendEvent(dest3, body, header)"
 ```
 
-#### Build-in functions
+#### Built-in functions
 
 
+Additional bult-in functions are provided to falicitate event processing and routing. 
+These are in addition to stanard functions in the Common Expression Language.
+
+<!--
 ##### filter
 
 The `filter` function returns a new map or array with some elements of the original map or array filtered out.
@@ -229,7 +242,7 @@ functions:
           - default:
             - =: 'output=  input + call("sum", input- 1)'
 ```
-
+-->
 
 ##### sendEvent
 
@@ -237,11 +250,9 @@ The sendEvent function sends an event to a destination.
 
 Input:
 
-- destination: destination to send the event
-- message: a JSON compatible message. If the message is to be delivered through http(s), the message should contain two
-  attributes:
-  - body: the body of a REST-ful message
-  - header: the header for the REST-ful message
+- destination: destination variable to send the event
+- body: a JSON compatible message body of message.
+- header: HTTP header for the message.
 
 
 Output: empty string if OK, otherwise, error message
@@ -249,10 +260,11 @@ Output: empty string if OK, otherwise, error message
 Example:
 
 ```yaml
-  - =: 'result=  sendEvent("tekton-listener", message )'
+  - =: 'sendEvent(tekton-listener, body, header)'
 ```
 
 
+<!--
 ##### jobID
 
 The `jobID` function returns a new unique string each time it is called.
@@ -294,10 +306,11 @@ Example:
 ```
 
 After split, the variable components contains `[ "a", "b", "c" ]`.
+-->
 
 ### Event Connections
 
-Event connections maps the destinations of mediations to real endpoints. Currently only https endpoints are supported.
+Event connections map the destinations of mediations to real endpoints. Currently only https endpoints are supported.
 
 Given the mediator with mediation named `webhook` below:
 
@@ -314,7 +327,7 @@ spec:
         name: webhook
         sendTo: [ "dest"  ]
         body:
-          - = : 'sendEvent(dest, message)'
+          - = : 'sendEvent(dest, body, header)'
 ```
 
 The connection specification may look like:
@@ -335,7 +348,7 @@ spec:
         - https:
             - url: https://mediator1/mediation1
               insecure: true
-            - url: https://mediator2/mediation1
+            - urlExpression: cel_expression
               insecure: true
 ```
 
@@ -349,12 +362,15 @@ The `to` attribute currently only supports https endpoints. The url may be any R
 mediator, the other mediator's `createListener` attribute must be set to `true`, and the URL to use is:
 `https://<service-name>/<mediation name>`, where `<service-name>` is the name of the mediator.
 
+The `urlExpression`  is used to enable dynamically generated destinations. 
+It is an Common Expression Language expression evaluated within the scope of the mediation.
+
 
 <a name="webhook-processing"></a>
 ### Webhook Processing
 
 The mediator framework provides additional function to facilitate the processing of webhook messages.
-Currently only `gihub` webhook messages are supported.
+Currently only `github` webhook messages are supported.
 For example:
 
 ```yaml
@@ -368,174 +384,146 @@ spec:
   repositories:
     - github:
         secret: your-github-secret
+        webhookSecret: my-webhook-secret
   mediations:
     - mediation:
         name: appsody
         selector:
-          - urlPattern: /webhook
+          - urlPattern: webhook
           - repositoryType:
             file: .type1.yaml
             newVariable: message.body.webhooks-type1
         sendTo: [ "dest"  ]
         variables:
           - name: message.body.webhooks-tekton-service-account
+            value: kabanero-pipeline
           body:
-              - = : 'sendEvent(dest, message)'
+              - = : 'sendEvent(dest, body, header)'
     - mediation:
         name: gitops
         selector:
-          - urlPattern: /webhook
+          - urlPattern: webhook
           - repositoryType:
             name: message.body.webhooks-type2
             file: .type2.yaml
         sendTo: [ "dest"  ]
         body:
-          - = : 'sendEvent(dest, message)'
+          - = : 'sendEvent(dest, body, header)'
   ```
 
-The `repositories` attribute defines repository related configuration. For `github` repository, you may define a secret
-to verify the authenticity of the webhook originator. It is the same secret you specified when configuring the webhook
+The `repositories` attribute defines repository related configuration. For `github` repository, 
+
+- `secret` points to a Kubernetes `Secret`. It has the same format as the Tekton user name/password secret, where username is the user name is the user name to Github, and password is the API key to access github. 
+- `webhookSecret` is used to authenticate the originator of the webhook message. It is the same secret you specified when configuring the webhook
 on github.
 
 The `selector` defines which mediation to call based on the specified criteria:
 
 - The `urlPattern` matches the pattern to the incoming URL. Currently only exact match is supported.
-- The `repositoryType` matches the type of the repository. The mediation is called only if the specified `file` exists
-  in the repository. In addition, the content of the `file` is read and bound to the the variable `newVariable`.
+- The `repositoryType` matches the type of the repository. The mediation is called only if the specified `file` exists in the repository. 
+In addition, the content of the `file` is read and bound to the the variable `newVariable`.
 
-The `varibles` section creates new variables whose values are CEL expressions.
+The `varibles` section creates new variables.
 
-In addition, the mediation automatically adds additional predefined variables to the body of the incoming message after
-the creation of the repository variables. Though these variables are meant to be used for Tekton event listeners, they
+In addition, the mediation automatically adds additional predefined variables to the body of the incoming message after the creation of the repository variables. 
+Though these variables are meant to be used for Tekton event listeners, they
 are generic enough to be used by other downstream listeners as well.
 
 - `body.webhooks-tekton-git-server`:  The name of the incoming git server. For example, `github.com`
 - `body.webhooks-tekton-git-org` : The git organization
 - `body.webhooks-tekton-git-repo`: The name of the git repository.
+- `body.webhooks-tekton-git-branch`: The branch in the github repository.
 - `body.webhooks-tekton-event-type`: One of `pull_request`, `push`, or `tag`.
 - `body.webhooks-tekton-monitor`: `true` if the monitor task should be started.
 
 
 When processing an incoming webhook message, the flow is as follows:
 
-- The github secret is used to authenticate the sender.
-- The variables `message` with nested attributes `body` and `header` are created to store the body and header of the
-  message.
+- The github secret, if set, is used to authenticate the sender.
+- The variables `body` and `header` are created to store the body and header of the message.
 - The selector is evaluated in turn to locate the matching mediation.
 - The pre-defined variables are created.
 - The `variables` section are evaluated in order.
 - The mediation logic is called.
 
-#### Security configuration
-
-This section contains the configurations for secured access to Github.
 
 <a name="kabanero-integration"></a>
 ### Kabanero Integration
 
-This section describes how the event mediator is integrated with Kabanero.
-For now, the integration point is to use the event mediator
-as a webhook to drive Tekton pipelines installed with Kabanero.
+This section contains a tutorial on how the event mediator is integrated with Kabanero.
+The integration point is to use the event mediator
+as a organizational webhook to drive Tekton pipelines installed with Kabanero.
+Use the configurations files in the `sample_crds/example2` directory. Make sure you review and edit each yaml file when directed.
+
+#### Basic Architecture
 
 ![Webhook Mediator](drawings/webhook-mediator.jpg)
 
-As shown above,  the webhook mediator may be used with a github organizational webhook. Once defined, all webhook events
-within the organization are sent to the the same webhook mediator.  The mediator does the following for appsody
-projects:
+As shown above,  the webhook mediator may be used with a github organizational webhook. 
+Once defined, all webhook events within the organization are sent to the the same webhook mediator.  
+The mediator does the following for appsody projects:
 
 1. Determine that the type of the repository is appsody.
 2. Find the best matching Tekton event listener based on the semantic version of the project.
 3. Generate parameters required for the Tekton listener and Tekton trigger bindings.
 4. Forward the request to the listener.
 
-For example, the steps to process the pull request for project1 involves:
+For example, the steps to process the pull request for project2 involves:
 
 1. Webhook mediator receives a pull request webhook event.
-2. Webhook mediator determines the type of the repository is appsody, and the requested stack version 0.2.
-3. Webhook mediator locates the Tekton event listener that best matches the stack, which is listener for stack version
-   0.3.3.
+2. Webhook mediator determines the type of the repository is appsody, and the requested stack version 0.3.
+3. Webhook mediator locates the Tekton event listener that best matches the stack, which is listener for stack version 0.3.3.
 4. Webhook mediator add the Tekton related parameters to the message body.
 5. Webhook mediator forwards the webhook message with the added parameters to the Tekton listener.
 
+Note that for our example, there is no match for project1 , while the match for project3 is for version 1.0.2.
 
 
 #### Install Kabanero
 
-Follow the instructions here: TBD
+Follow the instructions here: https://kabanero.io/docs/ref/general/installation/installing-kabanero-foundation.html
 
 #### Create Kabanero CRD with events-operator enabled
 
-The configuration is TBD
+Review and apply the sample `kabanero.yaml`. Note that it uses event related sample pipelines.
+
 
 #### Create Github related secrets
 
-The required secrets for the events-operator and Tekton pipelines are TBD.
+Review `githubsecret.yaml` and change :
 
+- `tekton.dev/git-0: https://github.ibm.com`: change the location of the github repository to your organization's github repository.
+- `username`: the user name to login to github. If using an organizational webhook, the user must have permissions to access all repositories in the organization.
+-  `password`: The github API token for the user.
+
+Review `dockersecret.yaml` and change:
+- `tekton.dev/docker-0: https://index.docker.io/v1/`: change the location to your image registry.
+- `username`: the user name to login to your image registry
+- `password`: The passowrd to login to your image registry.
+
+
+Aply both yaml files:
+
+```
+oc apply -f githubsecret.yaml
+oc apply -f dockersecret.yaml
+```
+
+Associate both secrets with service account  `kabahero-pipeline`. You may do this via `oc edit sa kabanero-pipeline` add adding the name of the secrets to the end. `TODO`: Need to to integrate better with existing kabanero install.
 
 #### Create Webhook Event Listener
 
-Modify and apply the CRD below to create a new webhook listener.
 
-At the minimum, you want to change:
+Modify `webhook2.yaml`:
+- Ensure `secret`  matches the name of the github secret.
+- Provide a value for `webhookSecret`. You will use this failure when configuring the webhook on github.
+- Change the value of the variable `body.webhooks-tekton-docker-registry` to the correct value for your organization.
 
-- the github `secret` to match the secret you specified when creating the webhook.
+Review Apply the webhook related yamls:
 
-```yaml
-apiVersion: events.kabanero.io/v1alpha1
-kind: EventMediator
-metadata:
-  name: webhook-mediator
-spec:
-  createListener: true
-  createRoute: true
-  repositories:
-    - github:
-        secret: your-github-secret
-  mediations:
-    - mediation:
-        name: appsody
-        selector:
-          - urlPattern: /webhook
-          - repositoryType:
-            file: .appsody-config.yaml
-            newVariable: message.body.webhooks-appsody
-        sendTo: [ "dest"  ]
-        variables:
-          - name: message.body.webhooks-tekton-service-account
-            value: kabnero-pipeline
-          - name: message.body.webhooks-tekton-target-namespace
-            value: kabanero
-          - name: message.body.webhooks-tekton-ssl-verify
-            value: false
-          - name: message.body.webhooks-tekton-insecure-skip-tls-verify
-            value: true
-          - name: message.body.webhooks-tekton-pull-task
-            value: monitor-task
-          - name: message.body.webhooks-tekton-docker-registry
-            value: docker.io/$(msg.body.webhooks-tekton-org)/$(msg.body.webhooks-tekton-repo)
-          - name: message.body.webhooks-tekton-release-name
-            value: 'message.body.webhooks-appsody.project-name'
-          body:
-              - if : repository in permitted
-                 - = : 'sendEvent(dest, message)'
-  ```
-
-```yaml
-apiVersion: events.kabanero.io/v1alpha1
-kind: EventConnections
-metadata:
-  name: webhook
-spec:
-  connections:
-    - from:
-        mediator:
-            name: webhook
-            mediation: appsody
-            destination: dest
-      to:
-        - https:
-            - url: https://${message.body.webhooks-kabanero-tekton-listener}
-              insecure: true
+```
+oc apply -f webhook2.yaml
+oc apply -f connections2.yaml
 ```
 
 use `oc get route webhook` to find the external hostname of the route that was created.  Use this host when creating a webhook.
@@ -546,6 +534,13 @@ To create an organization webhook, follow the instructions here for
 [Configuring webhooks for organization events in your enterprise account](https://help.github.com/en/github/setting-up-and-managing-your-enterprise-account/configuring-webhooks-for-organization-events-in-your-enterprise-account).
 
 If you are not working within an enterprise, you may also create per-repository webhook.
+
+#### Test webhook
+
+Make a change to an appsody project on github. 
+- Initiate a pull request
+- Iniitite a merge
+- Initiate a tag on master.
 
 #### Kabanero Web hook Processing Flow for Appsody Projects
 

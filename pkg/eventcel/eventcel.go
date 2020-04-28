@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"fmt"
     eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+    "github.com/kabanero-io/events-operator/pkg/status"
+    "github.com/kabanero-io/events-operator/pkg/eventenv"
     // "github.com/kabanero-io/events-operator/pkg/managers"
 // "github.com/kabanero-io/events-operator/pkg/endpoints"
 //	"github.com/kabanero-io/events-operator/pkg/messages"
@@ -263,6 +265,7 @@ type Processor struct {
 	additionalFuncs     cel.ProgramOption
     variables map[string]interface{}
     env cel.Env
+    statusParams *status.StatusParameters
 }
 
 // NewProcessor creates a new trigger processor.
@@ -271,9 +274,14 @@ func NewProcessor( functionHandler GetEventFunctionHandler, sendHandler SendEven
         getFunctionHandler: functionHandler,
         sendEventHandler: sendHandler,
         variables: make(map[string]interface{}),
+        statusParams: status.NewStatusParameters(),
 	}
 	p.initCELFuncs()
     return p
+}
+
+func (processor *Processor) GetStatusParameters()  []eventsv1alpha1.EventStatusParameter {
+    return processor.statusParams.GetStatusParameters()
 }
 
 // Initialize initializes a Processor with the specified trigger directory
@@ -418,15 +426,23 @@ Input:
     namespace: namepsace we're running
     client: controller client
     kabaneroIntegration: true to generate kabanero integration attributes when processing appsody config builds
+    remoteAddr: remote address of incoming request. Currently not used as in OCP it is an internal IP:port that changes 
 */
 func (p *Processor) ProcessMessage(header map[string][]string, body map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl,
-    hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool ) error {
+    hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool, remoteAddr string ) error {
     klog.Infof("Entering Processor.ProcessMessage for mediation %v,message: %v", mediation.Name, mediation)
 	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
     var err error
-    p.env, p.variables, err = p.initializeCELEnv(header, body, mediation, hasRepoType, repoTypeValue, namespace, client, kabaneroIntegration)
+    p.env, p.variables,  err = p.initializeCELEnv(header, body, mediation, hasRepoType, repoTypeValue, namespace, client, kabaneroIntegration, remoteAddr)
 	if err != nil {
+        summary := &eventsv1alpha1.EventStatusSummary  {
+             Operation: status.OPERATION_INITIALIZE_VARIABLES,
+             Input: p.statusParams.GetStatusParameters(),
+             Result: status.RESULT_FAILED,
+             Message: fmt.Sprintf("Error initializing variables: %v", err),
+        }
+        eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
 		klog.Errorf("ProcessMessage failed after initializeCELEnv: %v", err)
 		return err
 	}
@@ -438,10 +454,24 @@ func (p *Processor) ProcessMessage(header map[string][]string, body map[string]i
 	depth := 1
 	_, err = p.evalEventStatementArray(p.env, p.variables, mediation.Body, depth)
 	if err != nil {
+        summary := &eventsv1alpha1.EventStatusSummary  {
+             Operation: status.OPERATION_EVALUATE_MEDIATION,
+             Input: p.statusParams.GetStatusParameters(),
+             Result: status.RESULT_FAILED,
+             Message: fmt.Sprintf("Mediation Evaluation Error: %v", err),
+        }
+        eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
 		klog.Errorf("Error evaluating mediation %v: ERROR MESSAGE: %v", mediation, err)
 		return err
 	}
 
+    summary := &eventsv1alpha1.EventStatusSummary  {
+         Operation: status.OPERATION_EVALUATE_MEDIATION,
+         Input: p.statusParams.GetStatusParameters(),
+         Result: status.RESULT_COMPLETED,
+         Message: "",
+    }
+    eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
 	if klog.V(5) {
 		klog.Infof("ProcessMessage after evalEventStatementArray")
 	}
@@ -685,22 +715,27 @@ func (p *Processor) initializeEmptyCELEnv() (cel.Env, error) {
 setting github and Tekton listener related variables.
   header, body: incoming message
   mediationImpl: the mediation to process the message
-  hasRepoType: true of RepositoryType specified
+  hasRepoType: true if RepositoryType specified
   repoTypeValue: value of the repository type 
   namespace: namespace we're running in
   client: controller client
   kabaneroIntegration: true to generate Kabanero integration attributes
+  remoteAddr: remote address of incoming message
 Return: cel.Env: the CEL environment
 	map[string]interface{}: variables used during substitution
     inputVariableName name of input variable, to be bound to message
     sendTo: name of destinations
+    []EventStatusParameter: collected status parameters 
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool) (cel.Env, map[string]interface{}, error) {
+func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool, remoteAddr string) (cel.Env, map[string]interface{},  error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
 	}
+
+    // eventParams = append(eventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_FROM, Value: remoteAddr})
+    p.statusParams.AddParameter(status.PARAM_MEDIATION, mediationImpl.Name)
 
     // inputVariableName := mediationImpl.Input
     sendTo := mediationImpl.SendTo
@@ -749,70 +784,84 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        if  err != nil {
            return nil, nil, err
        }
+    }
 
-       if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
-           /* evaluate pre-defined variables for appsody.body.html_url */
-           repository, exists := body[REPOSITORY]
-           if exists {
-               repositoryMap, ok := repository.(map[string]interface{})
-               if ! ok {
-                   return nil, nil, fmt.Errorf("body.repository is not a map[string]interface{}. type: %T, value: %v", repository, repository)
-               }
-               htmlUrl , exists := repositoryMap[HTML_URL]
-               if ( exists ) {
-                   url, ok := htmlUrl.(string)
-                   if !ok {
-                       return nil, nil, fmt.Errorf("body.repository.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
-                   }
-
-                   server, org, repo, err :=  utils.ParseGithubURL(url)
-                   if err != nil {
-                       return nil, nil, err
-                   }
-
-                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE,  "\"" + server  + "\"", variables)
-                   if  err != nil {
-                      return nil, nil, err
-                   }
-
-                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_ORG_VARIABLE,  "\"" + org  + "\"", variables)
-                   if  err != nil {
-                      return nil, nil, err
-                   }
-
-                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_REPO_VARIABLE,  "\"" + repo  + "\"", variables)
-                   if  err != nil {
-                      return nil, nil, err
-                   }
-               } else {
-                   return nil, nil, fmt.Errorf("body.repository.html_url is not found")
-               }
-           } else {
-               klog.Infof("body.repository not found. Repository related variables not generated. ")
+   if utils.IsHeaderGithub(header) {
+       /* evaluate pre-defined variables for body.repository.html_url */
+       repository, exists := body[REPOSITORY]
+       if exists {
+           repositoryMap, ok := repository.(map[string]interface{})
+           if ! ok {
+               return nil, nil, fmt.Errorf("body.repository is not a map[string]interface{}. type: %T, value: %v", repository, repository)
            }
-
-           ref, exists := body[REF]
-           if exists {
-               refStr, ok := ref.(string)
+           htmlUrl , exists := repositoryMap[HTML_URL]
+           if ( exists ) {
+               url, ok := htmlUrl.(string)
                if !ok {
-                   return nil, nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
+                   return nil, nil, fmt.Errorf("body.repository.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
                }
-               branch := refStr[strings.LastIndex(refStr, "/")+1:]
-               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
+               p.statusParams.AddParameter(status.PARAM_REPOSITORY, url)
+
+               server, org, repo, err :=  utils.ParseGithubURL(url)
+               if err != nil {
+                   return nil, nil, err
+               }
+
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE,  "\"" + server  + "\"", variables)
                if  err != nil {
                   return nil, nil, err
                }
-           }
 
-           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE,  "header[\"X-Github-Event\"][0]", variables)
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_ORG_VARIABLE,  "\"" + org  + "\"", variables)
+               if  err != nil {
+                  return nil, nil, err
+               }
+
+               env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_REPO_VARIABLE,  "\"" + repo  + "\"", variables)
+               if  err != nil {
+                  return nil, nil, err
+               }
+           } else {
+               return nil, nil, fmt.Errorf("body.repository.html_url is not found")
+           }
+       } else {
+           klog.Infof("body.repository not found. Repository related variables not generated. ")
+       }
+
+       ref, exists := body[REF]
+       if exists {
+           refStr, ok := ref.(string)
+           if !ok {
+               return nil, nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
+           }
+           branch := refStr[strings.LastIndex(refStr, "/")+1:]
+           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
            if  err != nil {
               return nil, nil, err
            }
-           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
-           if  err != nil {
-              return nil, nil, err
-           }
+           p.statusParams.AddParameter(status.PARAM_BRANCH, branch)
+       }
 
+       tempEvent, ok  := header["X-Github-Event"]
+       if !ok {
+           return nil, nil, fmt.Errorf("HTTP header does not contain X-Github-Event")
+       }
+       if len(tempEvent) == 0 {
+           return nil, nil, fmt.Errorf("HTTP header X-Github-Event is empty")
+       }
+       githubEvent := tempEvent[0] 
+       p.statusParams.AddParameter(status.PARAM_GITHUB_EVENT, githubEvent)
+
+       env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE,  "\"" + githubEvent +"\"", variables)
+       if  err != nil {
+          return nil, nil, err
+       }
+       env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
+       if  err != nil {
+          return nil, nil, err
+       }
+
+       if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
            stack, ok := repoTypeValue[STACK]
            if !ok {
                return  nil, nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
@@ -821,11 +870,12 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            if !ok {
                return  nil, nil, fmt.Errorf("stack %v not string in appsody-configy.yaml: %v", stack, repoTypeValue)
            }
+           p.statusParams.AddParameter(status.PARAM_STACK, stackStr)
            components := strings.Split(stackStr, ":")
            if len(components) != 2 {
                return  nil, nil, fmt.Errorf("invalid stack value in appsody-configy.yaml:%v  ", stackStr)
            }
-
+    
            listener := ""
            version := "unknown"
            if kabaneroIntegration {
@@ -842,7 +892,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
             if  err != nil {
                return nil, nil, err
             }
-       }
+        }
     }
 
     if mediationImpl.Variables != nil {

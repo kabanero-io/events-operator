@@ -6,6 +6,7 @@ import (
 
     "github.com/go-logr/logr"
     eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
+    "github.com/kabanero-io/events-operator/pkg/status"
     "github.com/kabanero-io/events-operator/pkg/event"
     "github.com/kabanero-io/events-operator/pkg/eventcel"
     "github.com/kabanero-io/events-operator/pkg/eventenv"
@@ -572,8 +573,8 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
                            An error message is returned if the marker file is specified, but there is a problem in
                            locating and reading it.
 */
-func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
-    body map[string]interface{}, path string, kubeClient client.Client, namespace string) (error, bool, bool, map[string]interface{}) {
+func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
+    body map[string]interface{}, path string, kubeClient client.Client, namespace string, remoteAddr string) (error, bool, bool, map[string]interface{}) {
     klog.Infof("mediationMatches for  path %s", path)
 
     emptyMap := make(map[string]interface{})
@@ -608,13 +609,47 @@ func mediationMatches(mediationImpl *eventsv1alpha1.EventMediationImpl, header m
 
         /* Only works with GitHub */
         if !utils.IsHeaderGithub(header)  {
+            summary := &eventsv1alpha1.EventStatusSummary  {
+                 Operation: status.OPERATION_FIND_MEDIATION,
+                 Input: []eventsv1alpha1.EventStatusParameter { 
+                            { Name: status.PARAM_MEDIATION,
+                              Value: mediationImpl.Name,
+                            },
+                        },
+                 Result: status.RESULT_FAILED,
+                 Message: fmt.Sprintf("repositoryType not supported for non-github repository"),
+            }
+            eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
             return fmt.Errorf("unable to process non-GitHub message for mediation %v", mediationImpl.Name), false, false, emptyMap
         }
 
-        yaml, exists, err := utils.DownloadYAML(kubeClient, namespace, header, body, repositoryType.File)
+        var secretName string = ""
+        if mediator.Spec.Repositories != nil {
+            for _, repo := range *mediator.Spec.Repositories {
+                if repo.Github != nil {
+                     secretName = repo.Github.Secret
+                     break
+                }
+            }
+        }
+        yaml, exists, err := utils.DownloadYAML(kubeClient, namespace, secretName, header, body, repositoryType.File)
         if err != nil {
-             // error reading the yaml
-             return  err, false, true, emptyMap
+            // error reading the yaml
+            summary := &eventsv1alpha1.EventStatusSummary  {
+                 Operation: status.OPERATION_FIND_MEDIATION,
+                 Input: []eventsv1alpha1.EventStatusParameter { 
+                            { Name: status.PARAM_MEDIATION,
+                              Value: mediationImpl.Name,
+                            },
+                            { Name: status.PARAM_FILE,
+                              Value: repositoryType.File,
+                            },
+                        },
+                 Result: status.RESULT_FAILED,
+                 Message: fmt.Sprintf("Unable to download file. Error: %v", err),
+            }
+            eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
+            return  err, false, true, emptyMap
         }
         if !exists{
             // file does not exist
@@ -695,6 +730,14 @@ func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.
             // X-Hub-Signature set but a valid secret is not configured. Do not process the event.
             klog.Errorf("found X-Hub-Signature header but a valid secret is not configured -- ignoring request")
             w.WriteHeader(http.StatusBadRequest)
+            summary := &eventsv1alpha1.EventStatusSummary  {
+                 Operation: status.OPERATION_VALIDATE_WEBHOOK_SECRET,
+                 Input: []eventsv1alpha1.EventStatusParameter { 
+                        },
+                 Result: status.RESULT_FAILED,
+                 Message: "No webbhook secret validates the github payload. Double check webhook secret configuration",
+            }
+            eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
             return
         }
 
@@ -705,6 +748,9 @@ func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.
 
 func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
 	return func(event *event.Event) error {
+        // last thing to do in event processing is to update status of the CRD
+        defer env.StatusMgr.SendStatus(env.StatusUpdater)
+
 	    path := event.URL.Path
         klog.Infof("In message handler: header: %v, body: %v, key: %v, url: %v, url path %v", event.Header, event.Body, key, event.URL, path)
 
@@ -725,7 +771,7 @@ func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
 
         for _, mediationsImpl := range *mediator.Spec.Mediations {
             eventMediationImpl := &mediationsImpl
-            err, matches, hasRepoType, repoTypeValue := mediationMatches(eventMediationImpl, event.Header , event.Body, path, env.Client, env.Namespace)
+            err, matches, hasRepoType, repoTypeValue := mediationMatches(mediator, eventMediationImpl, event.Header , event.Body, path, env.Client, env.Namespace, event.RemoteAddr )
             if err != nil {
                 klog.Infof("Error from mediationMatches for %v, error: %v", eventMediationImpl.Name, err)
                 return err
@@ -734,7 +780,7 @@ func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
                 /* process the message */
                 klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
                 processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                err := processor.ProcessMessage(event.Header, event.Body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration)
+                err := processor.ProcessMessage(event.Header, event.Body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration, event.RemoteAddr)
                 if err != nil {
                     klog.Errorf("Error processing mediation %v, error: %v", path, err)
                 }
@@ -742,6 +788,17 @@ func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
             }
         }
 
+        summary := &eventsv1alpha1.EventStatusSummary  {
+             Operation: status.OPERATION_FIND_MEDIATION,
+             Input: []eventsv1alpha1.EventStatusParameter { 
+                        { Name: status.PARAM_FROM,
+                          Value: event.RemoteAddr,
+                        },
+                    },
+             Result: status.RESULT_FAILED,
+             Message: "No matching mediation",
+        }
+        eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
         klog.Info("No matching mediation")
         return nil
     }
@@ -779,7 +836,19 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                  Destination:  destination,
              },
          }
+         eventParams := processor.GetStatusParameters()
+         eventParams = append(eventParams, eventsv1alpha1.EventStatusParameter{ status.PARAM_DESTINATION, destination})
+
          destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
+         if len(destinations) == 0 {
+             summary := &eventsv1alpha1.EventStatusSummary  {
+                  Operation: status.OPERATION_SEND_EVENT,
+                  Input: eventParams,
+                  Result: status.RESULT_FAILED,
+                  Message: "Destination not found in any EventConnection",
+             }
+             eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
+         }
          for _, dest := range destinations {
              /* TODO: add configurable timeout */
              if dest.Https != nil {
@@ -787,21 +856,37 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                      timeout, _ := time.ParseDuration("5s")
                      var url string
                      var err error
+                     tempEventParams := processor.GetStatusParameters()
                      if https.Url  != nil {
                          url = *https.Url
+                         tempEventParams = append(tempEventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_URL, Value: url})
                      } else if https.UrlExpression != nil {
+                         tempEventParams = append(tempEventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_URLEXPRESSION, Value: *https.UrlExpression})
                          url, err = processor.EvaluateString(*https.UrlExpression)
                          if err != nil {
-                             return err
+                            summary := &eventsv1alpha1.EventStatusSummary  {
+                                  Operation: status.OPERATION_SEND_EVENT,
+                                  Input: tempEventParams,
+                                  Result: status.RESULT_FAILED,
+                                  Message: fmt.Sprintf("Unable to evaluate urlExpression %v, error: %v", *https.UrlExpression, err),
+                             }
+                             eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
+                             continue
                          }
-                     } else {
                      }
+
                      klog.Infof("generateSendEventHandler: sending message to %v", url)
                      err = sendMessage(url, https.Insecure, timeout,  buf, header)
                      if err != nil  {
-                         /* TODO: better way to handle errors */
+                        summary := &eventsv1alpha1.EventStatusSummary  {
+                              Operation: status.OPERATION_SEND_EVENT,
+                              Input: tempEventParams,
+                              Result: status.RESULT_FAILED,
+                              Message: fmt.Sprintf("Send event to %v failed. Error: %v", url, err),
+                         }
+                         eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
                          klog.Errorf("generateSendEventHandler: error sending message: %v", err)
-                         return err
+                         continue
                      }
                 }
              }
@@ -840,8 +925,8 @@ func sendMessage(url string, insecure bool, timeout time.Duration, payload []byt
     }
 
     defer resp.Body.Close()
-    if resp.StatusCode != http.StatusOK {
-        return fmt.Errorf("res_provider Send to %v failed with http status %v", url, resp.Status)
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+        return fmt.Errorf("Send to %v failed with http status %v", url, resp.Status)
     }
 
     return nil

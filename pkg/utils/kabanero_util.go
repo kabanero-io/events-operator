@@ -20,6 +20,7 @@ import (
     "context"
 	"fmt"
 	kabanerov1alpha2 "github.com/kabanero-io/kabanero-operator/pkg/apis/kabanero/v1alpha2"
+    eventsv1alpha1 "github.com/kabanero-io/events-operator/pkg/apis/events/v1alpha1"
     "github.com/kabanero-io/events-operator/pkg/semverimage"
 	"k8s.io/client-go/rest"
 	"net/url"
@@ -149,52 +150,76 @@ This will scan for a secret with either of the following annotations:
 GetGitHubSecret will return the username and token of a secret whose annotation's value is a prefix match for repoURL.
 Note that a secret with the `kabanero.io/git-*` annotation is preferred over one with `tekton.dev/git-*`.
 Return: username, token, error
+Input:
+    kubeClient: client to API server
+    namespace: namespace to look for secret
+    name: name of the secret, or "" to auto-scan
+    repoURL: name of the repository
 */
-func GetGitHubSecret(kubeClient client.Client, namespace string, repoURL string) (string, string, error) {
+func GetGitHubSecret(kubeClient client.Client, namespace string, name string, repoURL string) (string, string, error) {
 	// TODO: Change to controller pattern and cache the secrets.
 	if klog.V(8) {
 		klog.Infof("GetGitHubSecret namespace: %s, repoURL: %s", namespace, repoURL)
 	}
 
-    secrets := &corev1.SecretList{}
-    options := []client.ListOption{client.InNamespace(namespace)}
-    err := kubeClient.List(context.Background(), secrets, options...)
-	if err != nil {
-		return "", "", err
-	}
+    if name != "" {
+        /* Look for specific secret */
+        objectKey := client.ObjectKey { Namespace: namespace, Name: name }
+        secret := &corev1.Secret{}
+        err := kubeClient.Get(context.Background(), objectKey, secret)
+        if err != nil {
+            return "", "", err
+        }
+        username, token, ok := getSecretUserNamePassword(secret)
+        if !ok {
+            return "", "", fmt.Errorf("Secret %v/%v does not contain username or password fields", namespace, name)
+        }
+        return username, token, nil
+    } else {
+        secrets := &corev1.SecretList{}
+        options := []client.ListOption{client.InNamespace(namespace)}
+        err := kubeClient.List(context.Background(), secrets, options...)
+        if err != nil {
+            return "", "", err
+        }
 
-	secret := getGitHubSecretForRepo(secrets, repoURL)
-	if secret == nil {
-		return "", "", fmt.Errorf("unable to find GitHub token for url: %s", repoURL)
-	}
+        username, token, ok := getGitHubSecretForRepo(secrets, repoURL)
+        if !ok {
+             return "", "", fmt.Errorf("Unable to locate secret containing username and api token to access %v", repoURL)
+        }
 
-	username, ok := secret.Data["username"]
-	if !ok {
-		return "", "", fmt.Errorf("unable to find username field of secret: %s", secret.Name)
-	}
-
-	token, ok := secret.Data["password"]
-	if !ok {
-		return "", "", fmt.Errorf("unable to find password field of secret: %s", secret.Namespace)
-	}
-
-	return string(username), string(token), nil
+        return username, token, nil
+    }
 }
 
-func getGitHubSecretForRepo(secrets *corev1.SecretList, repoURL string) *corev1.Secret {
+func getSecretUserNamePassword(secret *corev1.Secret) (string, string, bool) {
+    username, ok := secret.Data["username"]
+    if !ok {
+        return "", "", false
+	}
+
+    password, ok := secret.Data["password"]
+	if !ok {
+		return "", "", false
+   }
+
+    return string(username), string(password), true
+}
+
+func getGitHubSecretForRepo(secrets *corev1.SecretList, repoURL string) (string, string, bool) {
 	var tknSecret *corev1.Secret
 	for i, secret := range secrets.Items {
 		for key, val := range secret.Annotations {
 			if strings.HasPrefix(key, "tekton.dev/git-") && strings.HasPrefix(repoURL, val) {
 				tknSecret = &secrets.Items[i]
-			} else if strings.HasPrefix(key, "kabanero.io/git-") && strings.HasPrefix(repoURL, val) {
-				// Since we prefer the kabanero.io annotation, we can terminate early if we find one that matches.
-				return &secrets.Items[i]
+                user, password, ok := getSecretUserNamePassword(tknSecret)
+                if ok {
+                    return user, password, ok
+                }
 			}
 		}
 	}
-
-	return tknSecret
+	return "", "", false
 }
 
 /*
@@ -248,9 +273,9 @@ Return:
    error : if any error occurred when matching the repository to an event listener
 */
 func FindEventListenerForStack(kubeClient client.Client, namespace string, repoStackImage string, repoStackVersion string) (string, string, error) {
-//    if true {
-//        return "http://el-listener-mcheng.tekton-pipelines.svc.cluster.local:8080", "0.2.0", nil
-//    }
+    if true {
+        return "http://el-listener-mcheng.tekton-pipelines.svc.cluster.local:8080", "0.2.0", nil
+    }
 
 	if klog.V(8) {
 		klog.Infof("FindEventListenerForStack namespace: %s, reposStackImage: %v, repoStackVersion: %v", namespace, repoStackImage, repoStackVersion)
@@ -328,3 +353,19 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
     return "", currentVersion.String(), nil
 }
 
+/* Update status for mediator */
+func UpdateStatus(ctrlClient client.Client, namespace string, name string, summary []eventsv1alpha1.EventStatusSummary) error {
+
+    objectKey := client.ObjectKey { Namespace: namespace, Name: name }
+    mediator := &eventsv1alpha1.EventMediator {}
+    err := ctrlClient.Get(context.Background(), objectKey, mediator)
+    if err != nil {
+        return err
+    }
+    mediator.Status.Summary = summary
+    err = ctrlClient.Status().Update(context.Background(),mediator)
+    if err != nil {
+         return err
+    }
+    return nil
+}

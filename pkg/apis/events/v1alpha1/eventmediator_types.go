@@ -98,7 +98,46 @@ type EventMediatorStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
+    Summary []EventStatusSummary `json:"summary"`
+}
+
+type EventStatusParameter struct {
+    Name string `json:"name"`
+    Value string `json:"value"`
+}
+
+type EventStatusSummary struct {
+    Time metav1.Time `json:"time,omitempty"`
+    Operation string `json:"operation"`
+    Input []EventStatusParameter `json:"input"`
+    Result string `json:"result"`
     Message string `json:"message"`
+}
+
+/* Equality without taking time into account */
+func (es *EventStatusSummary ) Equals(other *EventStatusSummary) bool {
+    if es.Operation != other.Operation {
+        return false
+    }
+
+    if es.Result != other.Result {
+        return false
+    }
+
+    if es.Message != other.Message {
+        return false
+    }
+
+    if len(es.Input) != len(other.Input) {
+        return false
+    }
+
+    for index, param := range es.Input {
+        if param != other.Input[index] {
+            return false
+        }
+    }
+    return true
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

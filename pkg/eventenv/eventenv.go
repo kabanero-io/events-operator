@@ -4,6 +4,7 @@ import (
 	"github.com/kabanero-io/events-operator/pkg/connections"
 	"github.com/kabanero-io/events-operator/pkg/listeners"
 	"github.com/kabanero-io/events-operator/pkg/managers"
+	"github.com/kabanero-io/events-operator/pkg/status"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -16,6 +17,8 @@ type EventEnv struct {
 	EventMgr            *managers.EventManager
 	ConnectionsMgr      *connections.ConnectionsManager
 	ListenerMgr         listeners.ListenerManager
+    StatusMgr           *status.StatusManager
+    StatusUpdater       *status.Updater
 	MediatorName        string // Kubernetes name of this mediator worker if not ""
 	IsOperator          bool   // true if this instance is an operator, not a worker
 	Namespace           string // namespace we're running under
