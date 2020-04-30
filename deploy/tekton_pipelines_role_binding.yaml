@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: events-operator
-  namespace: kabanero
+  namespace: tekton-pipelines
 subjects:
 - kind: ServiceAccount
   name: events-operator

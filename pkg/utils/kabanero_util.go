@@ -47,7 +47,7 @@ const (
 //	DEFAULTNAMESPACE = "kabanero"
 
     ACTIVE = "active"
-    TEKTON_DEV = "tekton.dev"
+    TRIGGER_TEKTON_DEV = "triggers.tekton.dev"
     EVENT_LISTENER = "EventListener"
 )
 
@@ -252,7 +252,7 @@ func  imageMatches(repoStackImage string,  images []kabanerov1alpha2.ImageStatus
 func findEventListener(versionStatus *kabanerov1alpha2.StackVersionStatus) (string, string) {
     for _, pipeline := range versionStatus.Pipelines {
         for _, activeAsset := range pipeline.ActiveAssets {
-             if activeAsset.Group == TEKTON_DEV && activeAsset.Kind == EVENT_LISTENER {
+             if activeAsset.Group == TRIGGER_TEKTON_DEV && activeAsset.Kind == EVENT_LISTENER {
                   /* found */
                   return activeAsset.Namespace, activeAsset.Name
              }
@@ -273,13 +273,14 @@ Return:
    error : if any error occurred when matching the repository to an event listener
 */
 func FindEventListenerForStack(kubeClient client.Client, namespace string, repoStackImage string, repoStackVersion string) (string, string, error) {
+    /*
     if true {
         return "http://el-listener-mcheng.tekton-pipelines.svc.cluster.local:8080", "0.2.0", nil
     }
+    */
 
-	if klog.V(8) {
-		klog.Infof("FindEventListenerForStack namespace: %s, reposStackImage: %v, repoStackVersion: %v", namespace, repoStackImage, repoStackVersion)
-	}
+    // klog.Infof("FindEventListenerForStack namespace: %s, reposStackImage: %v, repoStackVersion: %v", namespace, repoStackImage, repoStackVersion)
+
     repoVersion, err := semverimage.NewVersion(repoStackVersion)
     if err != nil {
         return "", "", err
@@ -295,11 +296,14 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
     currentNamespace := ""
     currentVersion, _ := semverimage.NewVersion("0.0.0")
     for _, stack  := range stacks.Items {
+        // klog.Infof("Checking stack: %v/%v", stack.Namespace, stack.Name)
         status := stack.Status
         for _, versionStatus := range status.Versions {
+           // klog.Infof("Stack status: %v", versionStatus.Status)
            if versionStatus.Status != ACTIVE  {
                 continue
            }
+           // klog.Infof("repo image: %v, stack images: %v", repoStackImage, versionStatus.Images)
            if  !imageMatches(repoStackImage, versionStatus.Images)  {
                continue
            }
@@ -307,10 +311,12 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
            if err != nil {
                 return "", "", err
            }
+           // klog.Infof("matching repoVersion : %v, stack Version : %v", repoVersion, matchedVersion)
            matched := repoVersion.IsCompatible(matchedVersion)
            if !matched {
                 continue
            }
+           // klog.Infof("calling findEventListener for %v", versionStatus)
            matchedNamespace, matchedListener := findEventListener(&versionStatus)
            if  matchedListener == "" {
                  continue
@@ -368,4 +374,31 @@ func UpdateStatus(ctrlClient client.Client, namespace string, name string, summa
          return err
     }
     return nil
+}
+
+
+/* Get value of Webhook secret */
+func GetWebhookSecret(kubeClient client.Client, namespace string, name string) (string,  error) {
+	if klog.V(8) {
+		klog.Infof("GetWebhookSecret namespace: %s, name: %s", namespace, name)
+	}
+
+    if name == "" {
+        return "", fmt.Errorf("Can't get secret with empty name for namespace: %s", namespace)
+    }
+
+    /* Look for specific secret */
+    objectKey := client.ObjectKey { Namespace: namespace, Name: name }
+    secret := &corev1.Secret{}
+    err := kubeClient.Get(context.Background(), objectKey, secret)
+    if err != nil {
+        return "", fmt.Errorf("Secret %s/%s not found", namespace, name)
+    }
+
+    secretToken, ok := secret.Data["secretToken"]
+    if !ok {
+        return "",  fmt.Errorf("Secret %s/%s does not contain data secretToken", namespace, name)
+	}
+
+    return string(secretToken), nil
 }

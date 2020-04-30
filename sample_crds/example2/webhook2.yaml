@@ -7,8 +7,8 @@ spec:
   createRoute: true
   repositories:
     - github:
-        secret: he-https-secret
-        webhookSecret: my-super-secret-secret
+        secret: ghe-https-secret
+        webhookSecret: ghe-webhook-secret
   mediations:
     - name: webhook
       selector:

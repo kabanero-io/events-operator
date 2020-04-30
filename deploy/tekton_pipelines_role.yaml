@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: events-operator
+  namespace: tekton-pipelines
+rules:
+- apiGroups:
+  - triggers.tekton.dev 
+  resources:
+  - eventlisteners
+  verbs:
+  - get
+  - list
+  - watch

@@ -1,8 +1,8 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  creationTimestamp: null
   name: events-operator
+  namespace: kabanero
 rules:
 - apiGroups:
   - ""
@@ -70,8 +70,6 @@ rules:
   - events.kabanero.io
   resources:
   - '*'
-  - eventmediators
-  - eventconnections
   verbs:
   - create
   - delete
@@ -92,10 +90,14 @@ rules:
   resources:
   - '*'
   verbs:
-  - '*'
+  - get
+  - list
+  - watch
 - apiGroups:
-  - tekton.dev 
+  - triggers.tekton.dev 
   resources:
-  - '*'
+  - eventlisteners
   verbs:
-  - '*'
+  - get
+  - list
+  - watch

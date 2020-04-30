@@ -21,7 +21,6 @@ type EventMediatorSpec struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
     CreateListener  bool `json:"createListener,omitempty"`
-    ListenerPort int32    `json:"listenerPort,omitempty"`
     CreateRoute    bool `json:"createRoute,omitempty"`
     Repositories *[]EventRepository `json:"repositories,omitempty"`
 
