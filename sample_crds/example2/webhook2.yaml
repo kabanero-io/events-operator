@@ -27,6 +27,8 @@ spec:
           value: "false"
         - name: body.webhooks-tekton-insecure-skip-tls-verify
           value: "true"
+        - name: body.webhooks-tekton-local-deploy
+          value: "true"
       sendTo: [ "dest"  ]
       body:
         - = : "sendEvent(dest, body, header)"
