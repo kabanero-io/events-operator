@@ -927,7 +927,8 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
           return nil, nil, err
        }
 
-       if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
+       if mediationImpl.Selector!= nil && mediationImpl.Selector.RepositoryType != nil &&
+             mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
            stack, ok := repoTypeValue[STACK]
            if !ok {
                return  nil, nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
