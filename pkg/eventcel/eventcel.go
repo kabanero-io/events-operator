@@ -162,7 +162,7 @@ const (
     WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE = "body.webhooks-tekton-event-type"
     WEBHOOKS_TEKTON_TAG_SHA = "body.webhooks-tekton-sha"
     WEBHOOKS_TEKTON_TAG_VERSION = "body.webhooks-tekton-tag-version"
-    WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
+//    WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
     WEBHOOKS_KABANERO_TEKTON_LISTENER = "body.webhooks-kabanero-tekton-listener"
     UNKNOWN_LISTENER = "http://UNKNOWN_KABAKERO_TEKTON_LISTENER"
     HEADS = "heads"
@@ -922,10 +922,12 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        if  err != nil {
           return nil, nil, err
        }
+       /* This is decided by the event listener
        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
        if  err != nil {
           return nil, nil, err
        }
+       */
 
        if mediationImpl.Selector!= nil && mediationImpl.Selector.RepositoryType != nil &&
              mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
