@@ -34,7 +34,6 @@ var _ = Describe("TestEvbentManager", func() {
 			Name:      "event-mediator-1",
 		},
 		Spec: v1alpha1.EventMediatorSpec{
-			ListenerPort: 9443,
 			CreateRoute:  true,
 			Mediations: &[]v1alpha1.EventMediationImpl{
 				{
