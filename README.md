@@ -14,6 +14,12 @@ The events operator allows users to define a Kubernetes centric event mediation 
 definitions, users can quickly construct mediation logic to receive, transform, and route JSON data structure. The
 transformation logic is based on Common Expression Language (CEL).
 
+The use cases for event mediator include:
+
+- Transformation of and routing arbitrary JSON data structure.
+- Webhook processing
+- Integration with Kabanero, including driving Tekton pipelines.
+
 <a name="functional-specification"></a>
 ## Functional Specification
 
@@ -22,7 +28,7 @@ The main components of events infrastructure are:
 - event mediator: defines what is to be run within one container. It consists of an optional https listener, and a list
   of mediations.
 - event mediation: user defined logic used to transform or route events.
-- event connection: defines the connections between mediations.
+- event connection: defines the connections between mediations, and between mediations and external http(s) listeners .
 
 Like other Kubernetes resources, the event mediators, mediations, and connections may be changed dynamically.
 
@@ -46,14 +52,13 @@ spec:
           - = : 'sendEvent(dest, message)'
 ```
 
-When the attribute `createListener` is `true`, a https listener is created to receive JSON data as input. In addition,
-a `Service` with the same name as the mediator's name is created so that the listener is accessible. An OpenShift
-service serving self-signed TLS certificate is automatically created to secure the communications. No
-authentication/authorization is currently implemented.
+When the attribute `createListener` is `true`, a https listener is created to receive JSON data as input. 
+In addition, a `Service` with the same name as the mediator's name is created so that the listener is accessible. 
+An OpenShift service serving self-signed TLS certificate is automatically created to secure the communications. 
+No authentication/authorization is currently implemented.
 
 The URL to send a JSON message to the mediation within the mediator is `https://<mediatorname>/<mediation name>`.
-For example: `https://webhook/webhook`. The `<mediation name>` in the URL addresses the specific mediation within the
-mediator.
+For example: `https://webhook/webhook`. The `<mediation name>` in the URL addresses the specific mediation within the mediator.
 
 When both attributes `createListener` and `createRoute` are set to `true`, a new `Route` with the same name as the
 mediator is created to allow external access to the mediator. The external host name for the `Route` is installation
@@ -453,7 +458,6 @@ When processing an incoming webhook message, the flow is as follows:
 This section contains a tutorial on how the event mediator is integrated with Kabanero.
 The integration point is to use the event mediator
 as a organizational webhook to drive Tekton pipelines installed with Kabanero.
-Use the configurations files in the `sample_crds/example2` directory. Make sure you review and edit each yaml file when directed.
 
 #### Basic Architecture
 
@@ -485,59 +489,169 @@ Follow the instructions here: https://kabanero.io/docs/ref/general/installation/
 
 #### Create Kabanero CRD with events-operator enabled
 
-Review and apply the sample `kabanero.yaml`. Note that it uses event related sample pipelines.
+Edit and apply the following yaml
+
+- Change the sha256 value to the correct value. The correct value is stored in: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/eventing-kabanero-pipelines-tar-gz-sha256
+- Apply the yaml 
+
+```
+apiVersion: kabanero.io/v1alpha2
+kind: Kabanero
+metadata:
+  name: kabanero
+spec:
+  version: "0.8.0"
+  governancePolicy:
+    stackPolicy: none
+  events:
+    enable: true
+  stacks:
+    repositories:
+    - name: central
+      https:
+        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.9.0/kabanero-stack-hub-index.yaml    
+    pipelines:
+    - id: default
+      sha256: 307976f51bb8fc5b8ca0fa5d7478e7fb1c722811a2135f9c0d1cf900fc27269f
+      https:
+        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/eventing-kabanero-pipelines.tar.gz
+```
+
+
 
 
 #### Create Github related secrets
 
-Review `githubsecret.yaml` and change :
+##### API Token
 
-- `tekton.dev/git-0: https://github.ibm.com`: change the location of the github repository to your organization's github repository.
+The mediator needs an API token to access github to read configuration files such as `.appsody-config.yaml`.  You may use an existing secret already configured for Tekton pipelines, or you may configure a new secret.
+
+If you need to create a new secret, edit and apply the following secret:
+
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ghe-https-secret
+  namespace: kabanero
+  annotations:
+    tekton.dev/git-0: https://github.com
+type: kubernetes.io/basic-auth
+stringData:
+  username: <user name>
+  password:  <API token>
+```
+
+Note:
+
+- `tekton.dev/git-0: https://github.com`: change the location of the github repository to your organization's github repository.
 - `username`: the user name to login to github. If using an organizational webhook, the user must have permissions to access all repositories in the organization.
 -  `password`: The github API token for the user.
 
-Review `dockersecret.yaml` and change:
-- `tekton.dev/docker-0: https://index.docker.io/v1/`: change the location to your image registry.
-- `username`: the user name to login to your image registry
-- `password`: The passowrd to login to your image registry.
 
+You may optionally associate the secret with service account  `kabahero-pipeline` if you want to use it for your pipeline. You may do this via `oc edit sa kabanero-pipeline` add adding the name of the secrets to the end.
 
-Aply both yaml files:
+##### Webhook Secret
+
+The webhook secret is the secret you configure on Github, and embedded in each message received from github. 
+It enables the mediator to verify that the message is indeed from github. 
+
+Edit and apply the following secret. Change `<my github secret>` to a string of your choosing. You'll provide the same string when configuring the webhook secret on Github.
 
 ```
-oc apply -f githubsecret.yaml
-oc apply -f dockersecret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ghe-webhook-secret
+stringData:
+  secretToken: <my github secret>
 ```
 
-Associate both secrets with service account  `kabahero-pipeline`. You may do this via `oc edit sa kabanero-pipeline` add adding the name of the secrets to the end. `TODO`: Need to to integrate better with existing kabanero install.
+
 
 #### Create Webhook Event Listener
 
-
-Modify `webhook2.yaml`:
-- Ensure `secret`  matches the name of the github secret.
-- Provide a value for `webhookSecret`. You will use this failure when configuring the webhook on github.
-- Change the value of the variable `body.webhooks-tekton-docker-registry` to the correct value for your organization.
-
-Review Apply the webhook related yamls:
+To create a webhook listener, edit and apply the following yaml file:
 
 ```
-oc apply -f webhook2.yaml
-oc apply -f connections2.yaml
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: webhook
+spec:
+  createListener: true
+  createRoute: true
+  repositories:
+    - github:
+        secret: ghe-https-secret
+        webhookSecret: ghe-webhook-secret
+  mediations:
+    - name: webhook
+      selector:
+        urlPattern: "webhook"
+        repositoryType:
+          newVariable: body.webhooks-appsody-config
+          file: .appsody-config.yaml
+      variables:
+        - name: body.webhooks-tekton-target-namespace
+          value: kabanero
+        - name: body.webhooks-tekton-service-account
+          value: kabanero-pipeline
+        - name: body.webhooks-tekton-docker-registry
+          value: <my-docker-registry> docker.io/<myorg>
+        - name: body.webhooks-tekton-ssl-verify
+          value: "false"
+        - name: body.webhooks-tekton-insecure-skip-tls-verify
+          value: "true"
+      sendTo: [ "dest"  ]
+      body:
+        - = : "sendEvent(dest, body, header)"
 ```
+
+Note:
+
+- Ensure `secret`  matches the name of the Kubernetes secret that contains the Github API token.
+- Ensure `webhookSecret` matches the name of the Kubernetes secret that contains your webhook secret.
+- Change `<my-docker-registry>` the the value of the docker registry for your organization, such as `docker.io/myorg`.
+
 
 use `oc get route webhook` to find the external hostname of the route that was created.  Use this host when creating a webhook.
+
+#### Create Event Connections
+
+Apply the following yaml:
+
+```
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: connections
+spec:
+  connections:
+    - from:
+        mediator:
+            name: webhook
+            mediation: webhook
+            destination: dest
+      to:
+        - https:
+            - urlExpression:  body["webhooks-kabanero-tekton-listener"]
+              insecure: true
+```
+
+Note that `body["webhooks-kabanero-tekton-listner"]` is a variable generated by the mediator. Its value is the Tekton event listener that best matches the incoming appsody stack version using semantic versioning.
 
 #### Configure webhook on your source repository
 
 To create an organization webhook, follow the instructions here for
-[Configuring webhooks for organization events in your enterprise account](https://help.github.com/en/github/setting-up-and-managing-your-enterprise-account/configuring-webhooks-for-organization-events-in-your-enterprise-account).
+[Configuring webhooks for organization events in your enterprise account](https://help.github.com/en/github/setting-up-and-managing-your-enterprise-account/configuring-webhooks-for-organization-events-in-your-enterprise-account). 
+Use the same webhook secret as the value of the secretToken configured earlier.
 
 If you are not working within an enterprise, you may also create per-repository webhook.
 
 #### Test webhook
 
-Make a change to an appsody project on github. 
+Make a change to an appsody project on github, within the organization that you configured the webhook.
 - Initiate a pull request
 - Iniitite a merge
 - Initiate a tag on master.
@@ -568,6 +682,8 @@ metadata:
   selfLink: /apis/kabanero.io/v1alpha2/namespaces/kabanero/kabaneros/kabanero
   uid: b217411a-480b-41e4-b01b-8e2aabec165d
 spec:
+  events:
+    enable: true
   stacks:
     repositories:
     - gitRelease: {}
@@ -681,22 +797,23 @@ Note that:
 
 When a new webhook message is received, the event mediator uses the `selector` in the mediator to find a matching
 mediation. It verifies the url pattern of the webhook request, the github secret, and reads `.appsody-config.yaml`. This
-allows it to associates the webhook event with the mediation `appsody`.
+allows it to associate the webhook event with the mediation `appsody`.
 
 The event mediator applies additional logic for appsody projects. First, it finds the best matching active stack by
-matching its `.spec.images[i].name` to the stack name as defined in `appsody-config.yaml`. It uses
-`.spec.images[i].version` to find the best semantically matched version. It uses `.status` to ensure that the version is
-active. It creates the variable `message.body.webhooks-kabanero-tekton-listener` to be `listener-12345678`.
+matching its `.spec.images[i].name` to the stack name as defined in `appsody-config.yaml`. 
+It uses `.spec.images[i].version` to find the best semantically matched version. 
+It uses `.status` to ensure that the version is active. 
+It creates the variable `message.body.webhooks-kabanero-tekton-listener` to be `listener-12345678`.
 
 It also creates all the default variables and user defined variables to be passed downstream to the Tekton event
 listener.
 
 When sending the message downstream, the URL as defined in the EventConnection is:
-`https://${message.body.webhooks-kabanero-tekton-listener}`. This resolves to: `https://listener-12345678`
+`body["webhooks-kabanero-tekton-listener"]`. This resolves to: `https://listener-12345678`
 
 The Tekton event listener is configured to trigger the correct pipeline based on input parameters.
 For the example below, there is a separate pipeline called depending on whether it is a push or pull request.
-In addition, a separate monitor task is created when the event mediator decides
+In addition, a separate monitor task is created when the event mediator decides. 
 
 ```yaml
 apiVersion: tekton.dev/v1alpha1
@@ -716,7 +833,7 @@ spec:
       name: build-deploy-pl-push-binding-12345678
     - interceptor:
       - cel:
-          filter: 'has(body.wehbooks-event-type) && body.webhooks-event-type == "push" '
+          filter: 'body["webhooks-event-type"] == "push" '
   - bindings:
     name: kabanero-pullrequest-event
     - apiversion: v1alpha1
@@ -726,7 +843,7 @@ spec:
       name: build-deploy-pl-template-12345678
     interceptors:
       - cel:
-          filter: 'has(body.webhooks-event-type) && body.webhooks-event-type == "pull_request" '
+          filter: 'body["webhooks-event-type"] == "pull_request" '
   - bindings:
     name: kabanero-monitor-task-event
     - apiversion: v1alpha1
@@ -736,5 +853,5 @@ spec:
      name: monitor-task-template-12345678
      interceptors:
       - cel:
-          filter: 'has(body.webhooks-tekton-monitor) && body.webhooks-tekton-monitor" '
+          filter: 'body["webhooks-tekton-monitor"] '
 ```

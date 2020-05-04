@@ -39,9 +39,6 @@ spec:
               type: boolean
             createRoute:
               type: boolean
-            listenerPort:
-              format: int32
-              type: integer
             mediations:
               description: ImportMediations  *[]string `json:"importMediations,omitempty"`
                 // default is to import everything unless code is specified

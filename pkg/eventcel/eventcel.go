@@ -160,9 +160,18 @@ const (
     WEBHOOKS_TEKTON_GIT_REPO_VARIABLE = "body.webhooks-tekton-git-repo"
     WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE = "body.webhooks-tekton-git-branch"
     WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE = "body.webhooks-tekton-event-type"
-    WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
+    WEBHOOKS_TEKTON_TAG_SHA = "body.webhooks-tekton-sha"
+    WEBHOOKS_TEKTON_TAG_VERSION = "body.webhooks-tekton-tag-version"
+//    WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
     WEBHOOKS_KABANERO_TEKTON_LISTENER = "body.webhooks-kabanero-tekton-listener"
     UNKNOWN_LISTENER = "http://UNKNOWN_KABAKERO_TEKTON_LISTENER"
+    HEADS = "heads"
+    HEAD = "head"
+    TAGS = "tags"
+    TAG = "tag"
+    PULL_REQUEST = "pull_request"
+    PUSH  = "push"
+    AFTER = "after"
 
 )
 
@@ -828,19 +837,6 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            klog.Infof("body.repository not found. Repository related variables not generated. ")
        }
 
-       ref, exists := body[REF]
-       if exists {
-           refStr, ok := ref.(string)
-           if !ok {
-               return nil, nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
-           }
-           branch := refStr[strings.LastIndex(refStr, "/")+1:]
-           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
-           if  err != nil {
-              return nil, nil, err
-           }
-           p.statusParams.AddParameter(status.PARAM_BRANCH, branch)
-       }
 
        tempEvent, ok  := header["X-Github-Event"]
        if !ok {
@@ -849,19 +845,92 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        if len(tempEvent) == 0 {
            return nil, nil, fmt.Errorf("HTTP header X-Github-Event is empty")
        }
-       githubEvent := tempEvent[0] 
+       githubEvent := tempEvent[0]
+       if githubEvent == PULL_REQUEST {
+           pr, ok := body[PULL_REQUEST]
+           if !ok {
+              return nil, nil, fmt.Errorf("pull request message does not contain pull_request attribute")
+           }
+           prMap, ok := pr.(map[string]interface{})
+           if !ok {
+              return nil, nil, fmt.Errorf("pull request not a map")
+           }
+           head, ok := prMap[HEAD]
+           if !ok {
+              return nil, nil, fmt.Errorf("pull request message does not contain pull_request.head attribute")
+           }
+           headMap, ok := head.(map[string]interface{})
+           if !ok {
+              return nil, nil, fmt.Errorf("pull request pull_request.head not a map")
+           }
+
+           ref, ok := headMap[REF]
+           if !ok {
+              return nil, nil, fmt.Errorf("pull request message does not contain pull_request.head.ref attribute")
+           }
+           branch, ok := ref.(string)
+           if !ok {
+              return nil, nil, fmt.Errorf("pull request.head.ref %v is not a string, but of type %t", ref, ref)
+           }
+           env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
+       }  else if githubEvent == PUSH {
+           ref, exists := body[REF]
+           if exists {
+               refStr, ok := ref.(string)
+               if !ok {
+                   return nil, nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
+               }
+               components := strings.Split(refStr, "/")
+               if len(components) != 3 {
+                   return nil, nil, fmt.Errorf("body.ref does not contain 3 components", ref)
+               }
+               if components[1] == HEADS {
+                   branch := components[2]
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
+                   p.statusParams.AddParameter(status.PARAM_BRANCH, branch)
+               } else if components[1] == TAGS {
+                   githubEvent = TAG
+                   tagVersion := components[2]
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_TAG_VERSION, "\""+ tagVersion + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
+                   sha, ok := body[AFTER]
+                   if !ok {
+                      return nil, nil, fmt.Errorf("tag does not contain after attribute")
+                   }
+                   shaStr, ok := sha.(string)
+                   if !ok {
+                      return nil, nil, fmt.Errorf("tag after attribute not a string")
+                   }
+                   env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_TAG_SHA, "\""+ shaStr + "\"", variables)
+                   if  err != nil {
+                      return nil, nil, err
+                   }
+               }
+           } else {
+                  return nil, nil, fmt.Errorf("push event does not contain ref attribute")
+           }
+       }
+
        p.statusParams.AddParameter(status.PARAM_GITHUB_EVENT, githubEvent)
 
        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE,  "\"" + githubEvent +"\"", variables)
        if  err != nil {
           return nil, nil, err
        }
+       /* This is decided by the event listener
        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
        if  err != nil {
           return nil, nil, err
        }
+       */
 
-       if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
+       if mediationImpl.Selector!= nil && mediationImpl.Selector.RepositoryType != nil &&
+             mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
            stack, ok := repoTypeValue[STACK]
            if !ok {
                return  nil, nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)

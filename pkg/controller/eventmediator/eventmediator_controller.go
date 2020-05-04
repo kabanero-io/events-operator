@@ -216,21 +216,24 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
 
             if instance.Spec.CreateListener {
                 port :=  getListenerPort(instance)
-                key := eventsv1alpha1.MediatorHashKey(instance)
-                workerQueue := event.NewQueue()
-                listenerHandler, err := validateMessageHandler(key, event.EnqueueHandler(workerQueue))
-                if err != nil {
-                    return reconcile.Result{}, err
-                }
-                err = env.ListenerMgr.NewListenerTLS(listenerHandler, listeners.ListenerOptions{
-                    Port: port,
-                })
-                if err != nil {
-                     return reconcile.Result{}, err
-                }
+                if !env.ListenerMgr.IsListening(port) {
+                    /* start new listener */
+                    key := eventsv1alpha1.MediatorHashKey(instance)
+                    workerQueue := event.NewQueue()
+                    listenerHandler, err := validateMessageHandler(key, event.EnqueueHandler(workerQueue))
+                    if err != nil {
+                        return reconcile.Result{}, err
+                    }
+                    err = env.ListenerMgr.NewListenerTLS(listenerHandler, listeners.ListenerOptions{
+                        Port: port,
+                    })
+                    if err != nil {
+                         return reconcile.Result{}, err
+                    }
 
-                // Start the queue worker
-                go event.ProcessQueueWorker(workerQueue, generateMessageHandler(env, key))
+                    // Start the queue worker
+                    go event.ProcessQueueWorker(workerQueue, generateMessageHandler(env, key))
+                }
             }
         }
     }
@@ -484,14 +487,7 @@ func labelsForEventMediator(name string) map[string]string {
 
 /* Get port in listener config. If port == 0, return default port. */
 func getListenerPort(mediator *eventsv1alpha1.EventMediator) int32 {
-    port := int32(0)
-    if mediator != nil {
-        port = mediator.Spec.ListenerPort
-        if port == int32(0) {
-            port = eventsv1alpha1.DEFAULT_HTTPS_PORT
-        }
-    }
-    return port
+    return eventsv1alpha1.DEFAULT_HTTPS_PORT
 }
 
 func generateServicePorts(mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) []corev1.ServicePort {
@@ -661,7 +657,8 @@ func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eve
 }
 
 func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.Handler, error) {
-    mediator := eventenv.GetEventEnv().EventMgr.GetMediator(mediatorKey)
+    env := eventenv.GetEventEnv()
+    mediator := env.EventMgr.GetMediator(mediatorKey)
 
     // No secrets configured for this mediator, just return the normal handler
     if mediator.Spec.Repositories == nil || len(*mediator.Spec.Repositories) == 0 {
@@ -715,8 +712,13 @@ func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.
 
             for _, repo := range *mediator.Spec.Repositories {
                 if repo.Github != nil {
-                    err = utils.ValidatePayload(sigType, sig, repo.Github.WebhookSecret, body)
+                    webhookSecret, err := utils.GetWebhookSecret(env.Client, env.Namespace, repo.Github.WebhookSecret)
+                    if err != nil {
+                         klog.Errorf("found X-Hub-Signature but unable to get webhook secret. Error: %v", err)
+                         break
+                    }
 
+                    err = utils.ValidatePayload(sigType, sig, webhookSecret, body)
                     // Found a secret that validates the payload
                     if err == nil {
                         // XXX: Need to set a new body so the next handler can read the body too
@@ -736,6 +738,10 @@ func validateMessageHandler(mediatorKey string, nextHandler http.Handler) (http.
                         },
                  Result: status.RESULT_FAILED,
                  Message: "No webbhook secret validates the github payload. Double check webhook secret configuration",
+
+            }
+            if err != nil {
+                summary.Message = fmt.Sprintf("error: %v", err)
             }
             eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
             return

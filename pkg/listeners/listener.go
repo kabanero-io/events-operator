@@ -34,7 +34,11 @@ const (
 	defaultTLSKeyPath  = "/etc/tls/tls.key"
 )
 
+
 type ListenerManager interface {
+
+    /* Return true if listening on the given port */
+    IsListening(port int32) bool
 	/* Create a new listener. */
 	NewListener(handler http.Handler, options ListenerOptions) error
 
@@ -64,8 +68,20 @@ func NewDefaultListenerManager() ListenerManager {
 	}
 }
 
+
+func (listenerMgr *ListenerManagerDefault) IsListening(port int32) bool {
+    listenerMgr.mutex.Lock()
+    defer listenerMgr.mutex.Unlock()
+
+    _, ok := listenerMgr.listeners[port]
+    return ok
+}
+
 // NewListener creates a new event listener
 func (listenerMgr *ListenerManagerDefault) NewListener(handler http.Handler, options ListenerOptions) error {
+    listenerMgr.mutex.Lock()
+    defer listenerMgr.mutex.Unlock()
+
 	if options.Port != 0 {
 		options.Port = defaultHttpPort
 	}
@@ -93,6 +109,9 @@ func (listenerMgr *ListenerManagerDefault) NewListener(handler http.Handler, opt
 
 	return nil
 }
+
+
+
 
 // NewListener creates a new HTTPS event listener
 func (listenerMgr *ListenerManagerDefault) NewListenerTLS(handler http.Handler, options ListenerOptions) error {

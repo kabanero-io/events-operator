@@ -69,3 +69,17 @@ tidy:
 
 test:
 	@ginkgo -r -v --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --compilers=2 pkg
+
+merge-yamls:
+	cat deploy/crds/events.kabanero.io_eventconnections_crd.yaml > kabanero-events.yaml
+	echo "---" >> kabanero-events.yaml
+	cat deploy/crds/events.kabanero.io_eventmediators_crd.yaml >> kabanero-events.yaml
+	echo "---" >> kabanero-events.yaml
+	cat deploy/service_account.yaml >> kabanero-events.yaml
+	echo "---" >> kabanero-events.yaml
+	cat deploy/role_binding.yaml >> kabanero-events.yaml
+	echo "---" >> kabanero-events.yaml
+	cat deploy/role.yaml >> kabanero-events.yaml
+	echo "---" >> kabanero-events.yaml
+	cat deploy/operator.yaml >> kabanero-events.yaml
+	echo "---" >> kabanero-events.yaml
