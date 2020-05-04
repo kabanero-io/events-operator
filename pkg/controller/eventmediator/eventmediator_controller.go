@@ -786,7 +786,7 @@ func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
                 /* process the message */
                 klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
                 processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
-                err := processor.ProcessMessage(event.Header, event.Body, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration, event.RemoteAddr)
+                err := processor.ProcessMessage(event.Header, event.Body, mediator, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration, event.RemoteAddr)
                 if err != nil {
                     klog.Errorf("Error processing mediation %v, error: %v", path, err)
                 }
