@@ -164,6 +164,8 @@ const (
     WEBHOOKS_TEKTON_TAG_VERSION = "body.webhooks-tekton-tag-version"
 //    WEBHOOKS_TEKTON_MONITOR_VARIABLE = "body.webhooks-tekton-monitor"
     WEBHOOKS_KABANERO_TEKTON_LISTENER = "body.webhooks-kabanero-tekton-listener"
+    WEBHOOKS_TEKTON_GITHUB_SECRET_NAME = "body.webhooks-tekton-github-secret-name"
+    WEBHOOKS_TEKTON_GITHUB_SECRET_KEY_NAME = "body.webhooks-tekton-github-secret-key-name"
     UNKNOWN_LISTENER = "http://UNKNOWN_KABAKERO_TEKTON_LISTENER"
     HEADS = "heads"
     HEAD = "head"
@@ -437,13 +439,13 @@ Input:
     kabaneroIntegration: true to generate kabanero integration attributes when processing appsody config builds
     remoteAddr: remote address of incoming request. Currently not used as in OCP it is an internal IP:port that changes 
 */
-func (p *Processor) ProcessMessage(header map[string][]string, body map[string]interface{}, mediation *eventsv1alpha1.EventMediationImpl,
+func (p *Processor) ProcessMessage(header map[string][]string, body map[string]interface{}, mediator *eventsv1alpha1.EventMediator, mediation *eventsv1alpha1.EventMediationImpl,
     hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool, remoteAddr string ) error {
     klog.Infof("Entering Processor.ProcessMessage for mediation %v,message: %v", mediation.Name, mediation)
 	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
     var err error
-    p.env, p.variables,  err = p.initializeCELEnv(header, body, mediation, hasRepoType, repoTypeValue, namespace, client, kabaneroIntegration, remoteAddr)
+    p.env, p.variables,  err = p.initializeCELEnv(header, body, mediator, mediation, hasRepoType, repoTypeValue, namespace, client, kabaneroIntegration, remoteAddr)
 	if err != nil {
         summary := &eventsv1alpha1.EventStatusSummary  {
              Operation: status.OPERATION_INITIALIZE_VARIABLES,
@@ -737,7 +739,7 @@ Return: cel.Env: the CEL environment
     []EventStatusParameter: collected status parameters 
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool, remoteAddr string) (cel.Env, map[string]interface{},  error) {
+func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediator *eventsv1alpha1.EventMediator, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool, remoteAddr string) (cel.Env, map[string]interface{},  error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
@@ -928,6 +930,25 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
           return nil, nil, err
        }
        */
+
+       if mediator.Spec.Repositories != nil {
+           for _, repo := range *mediator.Spec.Repositories {
+               if repo.Github != nil {
+                   if repo.Github.Secret != "" {
+                       /* Set up API token secret for monitor task */
+                       env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GITHUB_SECRET_NAME,  "\"" + repo.Github.Secret +"\"", variables)
+                       if  err != nil {
+                          return nil, nil, err
+                       }
+                       env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GITHUB_SECRET_KEY_NAME,  "\"password\"", variables)
+                       if  err != nil {
+                          return nil, nil, err
+                       }
+                       break
+                   }
+               }
+           }
+       }
 
        if mediationImpl.Selector!= nil && mediationImpl.Selector.RepositoryType != nil &&
              mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
