@@ -15,3 +15,14 @@ spec:
               insecure: true
             - urlExpression:  body["webhooks-kabanero-tekton-listener"]
               insecure: true
+    - from: 
+        mediator:
+            name: webhook2
+            mediation: gitops
+            destination: dest
+      to:
+        - https:
+            - url: https://mediator2-1/mediation1
+              insecure: true
+            - urlExpression:  eventListenerURL("listener-77e0ddd2")
+              insecure: true

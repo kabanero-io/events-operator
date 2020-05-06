@@ -334,29 +334,30 @@ func FindEventListenerForStack(kubeClient client.Client, namespace string, repoS
         return currentListener, currentVersion.String(), nil
     }
 
-    /* Find the actual listener */
-    listeners := &triggers.EventListenerList{}
-    options = []client.ListOption{client.InNamespace(currentNamespace)}
-    err = kubeClient.List(context.Background(), listeners, options...) 
+
+    urlStr, err := EventListenerURL(kubeClient, currentNamespace, currentListener)
     if err != nil {
-        klog.Errorf("Unable to find listener %v in namespace %v, error: %v", currentListener, currentNamespace, err)
-		return "", "", err
-	}
-    for _, listener := range listeners.Items {
-        klog.Infof("Processing listener %v in namespace %v, looking for: %v", listener.Name, currentNamespace, currentListener)
-        if listener.Name == currentListener {
-             /* found */
-             if listener.Status.Address == nil || listener.Status.Address.URL == nil {
-                 klog.Errorf("Found listener %v in namespace %v, but no URL status: %v", currentListener, currentNamespace, err)
-                 return "", currentVersion.String(), fmt.Errorf("found listener %v in namespace %v, but no URL status %v", currentListener, currentNamespace, err)
-             }
-             return listener.Status.Address.URL.String(), currentVersion.String(), nil
-        }
+        /* not found */
+        klog.Errorf("Unable to find listener %v in namespace %v. Error: %v", currentListener, currentNamespace, err)
+        return "", currentVersion.String(), err
+    }
+    return urlStr, currentVersion.String(), nil
+}
+
+/* FInd URL for EventListener */
+func EventListenerURL(kubeClient client.Client, namespace string, name string) (string, error) {
+    objectKey := client.ObjectKey { Namespace: namespace, Name: name }
+    listener := &triggers.EventListener{}
+    err := kubeClient.Get(context.Background(), objectKey, listener)
+    if err != nil {
+        return "", fmt.Errorf("Unable to find listern %v/%v, error: %v", namespace, name, err)
     }
 
-    /* not found */
-    klog.Errorf("Unable to find listener %v in namespace %v", currentListener, currentNamespace)
-    return "", currentVersion.String(), nil
+    if listener.Status.Address == nil || listener.Status.Address.URL == nil {
+         klog.Errorf("Listener %v/%v has empty URL status. Value: %v", namespace, name, listener)
+         return "", fmt.Errorf("Listener %v/%v has empty URL status", namespace, name)
+    }
+    return listener.Status.Address.URL.String(), nil
 }
 
 /* Update status for mediator */
