@@ -220,7 +220,7 @@ func DownloadFileFromGithub(owner, repository, fileName, ref, githubURL, user, t
 		}
 		/* some other errors */
 		return nil, false, fmt.Errorf("unable to download %v/%v/%v: not a file", owner, repository, fileName)
-	} else if resp.Response.StatusCode == 400 {
+	} else if resp.Response.StatusCode == 404 {
 		/* does not exist */
 		return nil, false, nil
 	} else {

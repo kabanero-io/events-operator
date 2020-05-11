@@ -785,7 +785,7 @@ func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
             if matches {
                 /* process the message */
                 klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
-                processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
+                processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, eventMediationImpl.Name) )
                 err := processor.ProcessMessage(event.Header, event.Body, mediator, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration, event.RemoteAddr)
                 if err != nil {
                     klog.Errorf("Error processing mediation %v, error: %v", path, err)
@@ -845,7 +845,9 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
          eventParams := processor.GetStatusParameters()
          eventParams = append(eventParams, eventsv1alpha1.EventStatusParameter{ status.PARAM_DESTINATION, destination})
 
+         klog.Infof("generateSendEventHandler calling LookupDestinationEdpoints, mediation %v, destination: %v", mediationName, destination)
          destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
+         klog.Infof("generateSendEventHandler returned from LookupDestinationEdpoints, mediation %v, destination: %v", mediationName, destination)
          if len(destinations) == 0 {
              summary := &eventsv1alpha1.EventStatusSummary  {
                   Operation: status.OPERATION_SEND_EVENT,
@@ -854,6 +856,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                   Message: "Destination not found in any EventConnection",
              }
              eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
+             klog.Errorf("No destination for meidation %v, destination %v", mediationName, destination)
          }
          for _, dest := range destinations {
              /* TODO: add configurable timeout */
@@ -865,8 +868,10 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                      tempEventParams := processor.GetStatusParameters()
                      if https.Url  != nil {
                          url = *https.Url
+                         klog.Infof("Url: %v", *https.Url)
                          tempEventParams = append(tempEventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_URL, Value: url})
                      } else if https.UrlExpression != nil {
+                         klog.Infof("UrlExpression: %v", *https.UrlExpression)
                          tempEventParams = append(tempEventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_URLEXPRESSION, Value: *https.UrlExpression})
                          url, err = processor.EvaluateString(*https.UrlExpression)
                          if err != nil {

@@ -39,6 +39,8 @@ oc-deploy: build-image push-image
 	sleep 2
 	oc apply -f deploy
 
+push: build-image push-image
+
 oc-undeploy:
 	oc delete deployment events-operator
 

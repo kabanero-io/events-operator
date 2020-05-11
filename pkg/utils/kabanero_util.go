@@ -252,7 +252,8 @@ func  imageMatches(repoStackImage string,  images []kabanerov1alpha2.ImageStatus
 func findEventListener(versionStatus *kabanerov1alpha2.StackVersionStatus) (string, string) {
     for _, pipeline := range versionStatus.Pipelines {
         for _, activeAsset := range pipeline.ActiveAssets {
-             if activeAsset.Group == TRIGGER_TEKTON_DEV && activeAsset.Kind == EVENT_LISTENER {
+             if activeAsset.Group == TRIGGER_TEKTON_DEV && activeAsset.Kind == EVENT_LISTENER &&
+                     /* TODO: kludge to ignore kustomize listeners */ strings.Index(activeAsset.Name, "kustomize") < 0  {
                   /* found */
                   return activeAsset.Namespace, activeAsset.Name
              }

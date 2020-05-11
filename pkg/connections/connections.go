@@ -59,12 +59,27 @@ func (connectionsMgr *ConnectionsManager) LookupDestinationEndpoints(endpoint *e
 			if matched {
 				/* TODO: duplicate elimination */
 				for _, to := range eventConn.To {
-					ret = append(ret, to)
+                    if to.Https != nil {
+                       /*
+                       for _, httpsEndpoint := range *to.Https {
+                          urlVal := ""
+                          if httpsEndpoint.Url != nil {
+                              urlVal = *httpsEndpoint.Url
+                          }
+                          urlExprVal := ""
+                          if httpsEndpoint.UrlExpression != nil {
+                             urlExprVal = *httpsEndpoint.UrlExpression
+                          }
+                          klog.Infof("Adding endpoint %v, %v, %v", urlVal, urlExprVal, httpsEndpoint.Insecure)
+                       }
+                       */
+					   ret = append(ret, to)
+                    }
 				}
 			}
 		}
 	}
-	klog.Infof("LookupDestinationEndpoints returned %v endpoints", len(ret))
+	klog.Infof("LookupDestinationEndpoints returned %v connections", len(ret))
 	return ret
 }
 
