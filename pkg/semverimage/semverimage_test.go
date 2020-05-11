@@ -1,209 +1,210 @@
-package semverimage
+package semverimage_test
+
 import (
-    "testing"
+	"testing"
+
+	"github.com/kabanero-io/events-operator/pkg/semverimage"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
-type strToVersion struct {
-    str string
-    version *Version
+type CompatStruct struct {
+	Version1   string
+	Version2   string
+	Compatible bool
 }
 
-var strToVersions [] strToVersion = []strToVersion{
-    { 
-    str: "0.0.0",
-    version: &Version {
-        Major: 0,
-        Minor: 0,
-        Patch: 0,
-        },
-    },
-    { 
-    str: "1.2.3",
-    version: &Version {
-        Major: 1,
-        Minor: 2,
-        Patch: 3,
-        },
-    },
-    { 
-    str: "1",
-    version: &Version {
-        Major: 1,
-        Minor: -1,
-        Patch: -1,
-        },
-    },
-    { 
-    str: "0.3",
-    version: &Version {
-        Major: 0,
-        Minor: 3,
-        Patch: -1,
-        },
-    },
+type GreaterThanStruct struct {
+	Version1    string
+	Version2    string
+	GreaterThan bool
 }
 
-func TestNewVersion(t *testing.T) {
-    for _, strToVer := range strToVersions {
-        ver, err := NewVersion(strToVer.str)
-        if err != nil {
-            t.Fatalf("Unable to convert %s to semverimage. Error: %v", strToVer.str, err)
-        }
-        if *ver != *strToVer.version {
-            t.Fatalf("%s parsed incorrectly. Expecting: %v, but got: %v", strToVer.str, *strToVer.version, *ver)
-        }
-    }
+type StringToVersion struct {
+	Str     string
+	Version *semverimage.Version
 }
 
-type compatStruct struct {
-    version1 string
-    version2 string
-    compatible bool
+func TestEvent(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Event Suite")
 }
 
-var compatData []compatStruct = []compatStruct {
-    {
-         version1: "1.2.3",
-         version2: "1.2.3",
-         compatible: true,
-    },
-    {
-         version1: "1.2.3",
-         version2: "1.2.4",
-         compatible: false,
-    },
-    {
-         version1: "1.2.3",
-         version2: "1.3.3",
-         compatible: false,
-    },
-    {
-         version1: "1.2.3",
-         version2: "0.2.3",
-         compatible: false,
-    },
-    {
-         version1: "1.3",
-         version2: "1.3.0",
-         compatible: true,
-    },
-    {
-         version1: "1.3",
-         version2: "1.3.99",
-         compatible: true,
-    },
-    {
-         version1: "1.3",
-         version2: "1.2.3",
-         compatible: false,
-    },
-    {
-         version1: "1.3",
-         version2: "1.4.0",
-         compatible: false,
-    },
-    {
-         version1: "1.3",
-         version2: "2.3.0",
-         compatible: false,
-    },
-    {
-         version1: "1",
-         version2: "1.2.3",
-         compatible: true,
-    },
-    {
-         version1: "1",
-         version2: "1.3.3",
-         compatible: true,
-    },
-    {
-         version1: "1",
-         version2: "2.0.0",
-         compatible: false,
-    },
-    {
-         version1: "0",
-         version2: "1.2.3",
-         compatible: false,
-    },
-    {
-         version1: "0",
-         version2: "0.5.6",
-         compatible: true,
-    },
-}
+var _ = Describe("SemverImage", func() {
 
+	var (
+		strToVersions   []StringToVersion
+		compatData      []CompatStruct
+		greaterThanData []GreaterThanStruct
+	)
 
-func TestCompatible(t *testing.T) {
-    for _, compat := range compatData {
-        ver1, err := NewVersion(compat.version1)
-        if err != nil {
-            t.Fatal(err)
-        }
-        ver2, err := NewVersion(compat.version2)
-        if err != nil {
-            t.Fatal(err)
-        }
-        compatible := ver1.IsCompatible(ver2)
-        if compatible != compat.compatible {
-            t.Fatalf("Compatibility test failed for versions %s and %s. Expecting compatibility: %v", compat.version1, compat.version2, compat.compatible)
-        }
-    }
-}
+	strToVersions = []StringToVersion{
+		{
+			Str: "0.0.0",
+			Version: &semverimage.Version{
+				Major: 0,
+				Minor: 0,
+				Patch: 0,
+			},
+		},
+		{
+			Str: "1.2.3",
+			Version: &semverimage.Version{
+				Major: 1,
+				Minor: 2,
+				Patch: 3,
+			},
+		},
+		{
+			Str: "1",
+			Version: &semverimage.Version{
+				Major: 1,
+				Minor: -1,
+				Patch: -1,
+			},
+		},
+		{
+			Str: "0.3",
+			Version: &semverimage.Version{
+				Major: 0,
+				Minor: 3,
+				Patch: -1,
+			},
+		},
+	}
 
-type greaterThanStruct struct {
-    version1 string
-    version2 string
-    greaterThan bool
-}
+	compatData = []CompatStruct{
+		{
+			Version1:   "1.2.3",
+			Version2:   "1.2.3",
+			Compatible: true,
+		},
+		{
+			Version1:   "1.2.3",
+			Version2:   "1.2.4",
+			Compatible: false,
+		},
+		{
+			Version1:   "1.2.3",
+			Version2:   "1.3.3",
+			Compatible: false,
+		},
+		{
+			Version1:   "1.2.3",
+			Version2:   "0.2.3",
+			Compatible: false,
+		},
+		{
+			Version1:   "1.3",
+			Version2:   "1.3.0",
+			Compatible: true,
+		},
+		{
+			Version1:   "1.3",
+			Version2:   "1.3.99",
+			Compatible: true,
+		},
+		{
+			Version1:   "1.3",
+			Version2:   "1.2.3",
+			Compatible: false,
+		},
+		{
+			Version1:   "1.3",
+			Version2:   "1.4.0",
+			Compatible: false,
+		},
+		{
+			Version1:   "1.3",
+			Version2:   "2.3.0",
+			Compatible: false,
+		},
+		{
+			Version1:   "1",
+			Version2:   "1.2.3",
+			Compatible: true,
+		},
+		{
+			Version1:   "1",
+			Version2:   "1.3.3",
+			Compatible: true,
+		},
+		{
+			Version1:   "1",
+			Version2:   "2.0.0",
+			Compatible: false,
+		},
+		{
+			Version1:   "0",
+			Version2:   "1.2.3",
+			Compatible: false,
+		},
+		{
+			Version1:   "0",
+			Version2:   "0.5.6",
+			Compatible: true,
+		},
+	}
 
-var greaterThanData []greaterThanStruct = []greaterThanStruct {
-    {
-         version1: "1.2.3",
-         version2: "1.0.0",
-         greaterThan: true,
-    },
-    {
-         version1: "1.2.3",
-         version2: "1.2.3",
-         greaterThan: false,
-    },
-    {
-         version1: "1.2.3",
-         version2: "1.1.0",
-         greaterThan: true,
-    },
-    {
-         version1: "1.2.3",
-         version2: "1.2.4",
-         greaterThan: false,
-    },
-    {
-         version1: "1.2.3",
-         version2: "1.3.0",
-         greaterThan: false,
-    },
-    {
-         version1: "1.2.3",
-         version2: "2.0.0",
-         greaterThan: false,
-    },
-}
+	greaterThanData = []GreaterThanStruct{
+		{
+			Version1:    "1.2.3",
+			Version2:    "1.0.0",
+			GreaterThan: true,
+		},
+		{
+			Version1:    "1.2.3",
+			Version2:    "1.2.3",
+			GreaterThan: false,
+		},
+		{
+			Version1:    "1.2.3",
+			Version2:    "1.1.0",
+			GreaterThan: true,
+		},
+		{
+			Version1:    "1.2.3",
+			Version2:    "1.2.4",
+			GreaterThan: false,
+		},
+		{
+			Version1:    "1.2.3",
+			Version2:    "1.3.0",
+			GreaterThan: false,
+		},
+		{
+			Version1:    "1.2.3",
+			Version2:    "2.0.0",
+			GreaterThan: false,
+		},
+	}
 
-func TestGreaterThan(t *testing.T) {
-    for _, greater := range greaterThanData {
-        ver1, err := NewVersion(greater.version1)
-        if err != nil {
-            t.Fatal(err)
-        }
-        ver2, err := NewVersion(greater.version2)
-        if err != nil {
-            t.Fatal(err)
-        }
-        isGreater := ver1.GreaterThan(ver2)
-        if isGreater != greater.greaterThan {
-            t.Fatalf("GreaterhThan test failed for versions %s and %s. Expecting: %v", greater.version1, greater.version2, greater.greaterThan)
-        }
-    }
-}
+	It("should return a version without a patch level", func() {
+		for _, strToVer := range strToVersions {
+			ver, err := semverimage.NewVersion(strToVer.Str)
+			Expect(err).Should(BeNil())
+			Expect(*ver).Should(Equal(*strToVer.Version))
+		}
+	})
+
+	It("should return true is the two versions are compatible", func() {
+		for _, compat := range compatData {
+			version1, err := semverimage.NewVersion(compat.Version1)
+			Expect(err).Should(BeNil())
+			version2, err := semverimage.NewVersion(compat.Version2)
+			Expect(err).Should(BeNil())
+			Expect(version1.IsCompatible(version2)).Should(Equal(compat.Compatible))
+		}
+
+	})
+
+	It("should test if a version is greater that the other version", func() {
+		for _, greater := range greaterThanData {
+			version1, err := semverimage.NewVersion(greater.Version1)
+			Expect(err).Should(BeNil())
+			version2, err := semverimage.NewVersion(greater.Version2)
+			Expect(err).Should(BeNil())
+			Expect(version1.GreaterThan(version2)).Should(Equal(greater.GreaterThan))
+		}
+	})
+})

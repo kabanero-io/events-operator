@@ -123,7 +123,7 @@ func (sm *StatusManager) AddEventSummary(summary *eventsv1alpha1.EventStatusSumm
     sm.needsUpdate = true
 }
 
-func (sm *StatusManager) getStatusSummary() []eventsv1alpha1.EventStatusSummary {
+func (sm *StatusManager) GetStatusSummary() []eventsv1alpha1.EventStatusSummary {
     sm.mutex.Lock()
     defer sm.mutex.Unlock()
 
