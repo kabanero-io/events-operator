@@ -1743,6 +1743,21 @@ func GetTimestamp() string {
 	return fmt.Sprintf("%04d%02d%02d%02d%02d%02d%01d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), now.Nanosecond()/100000000)
 }
 
+/* Implementation of eventListenerURL */
+func (p *Processor) eventListenerURL(param ref.Val) ref.Val {
+	str, ok := param.(types.String)
+	if !ok {
+		return types.ValOrErr(param, "unexpected type '%v' passed to eventListenerURL", param.Type())
+	}
+     /* TODO: avoid using global */
+    eventEnv := eventenv.GetEventEnv()
+	url, err := utils.EventListenerURL(eventEnv.Client, eventEnv.Namespace, string(str))
+    if err != nil {
+        return types.String("https://" + fmt.Sprintf("%v", err))
+    }
+    return types.String(url)
+}
+
 /* implementation of toDomainName for CEL */
 func (p *Processor) toDomainNameCEL(param ref.Val) ref.Val {
 	str, ok := param.(types.String)
@@ -2420,6 +2435,8 @@ func (p *Processor) getAdditionalCELFuncs() cel.ProgramOption {
 
 func (p *Processor) initCELFuncs() {
 	p.additionalFuncDecls = cel.Declarations(
+		decls.NewFunction("eventListenerURL",
+			decls.NewOverload("eventListenerURL_string", []*exprpb.Type{decls.String}, decls.String)),
 		decls.NewFunction("filter",
 			decls.NewOverload("filter_any_string", []*exprpb.Type{decls.Any, decls.String}, decls.Any)),
 		decls.NewFunction("call",
@@ -2446,6 +2463,9 @@ func (p *Processor) initCELFuncs() {
 			decls.NewOverload("substring", []*exprpb.Type{decls.String, decls.Int}, decls.String)))
 
 	p.additionalFuncs = cel.Functions(
+		&functions.Overload{
+			Operator: "eventListenerURL",
+			Unary:    p.eventListenerURL},
 		&functions.Overload{
 			Operator: "filter",
 			Binary:   p.filterCEL},

@@ -12,10 +12,34 @@ spec:
   mediations:
     - name: webhook
       selector:
-        urlPattern: "webhook"
         repositoryType:
           newVariable: body.webhooks-appsody-config
           file: .appsody-config.yaml
+      variables:
+        - name: body.webhooks-tekton-target-namespace
+          value: kabanero
+        - name: body.webhooks-tekton-service-account
+          value: kabanero-pipeline
+        - name: body.webhooks-tekton-docker-registry
+          value: docker.io/mchengdocker
+        - name: body.webhooks-tekton-ssl-verify
+          value: "false"
+        - name: body.webhooks-tekton-insecure-skip-tls-verify
+          value: "true"
+        - name: body.webhooks-tekton-local-deploy
+          value: "false"
+        - name: body.webhooks-tekton-monitor-dashboard-url
+          value: "https://tekton-dashboard-tekton-pipelines.apps.events.os.fyre.ibm.com/#/pipelineruns"
+        - name: body.webhooks-tekton-gitops-url
+          valueExpression: body.repository.html_url + "-gitops"
+      sendTo: [ "dest"  ]
+      body:
+        - = : "sendEvent(dest, body, header)"
+    - name: gitops
+      selector:
+        repositoryType:
+          newVariable: body.webhooks-gitops
+          file: env/kustomization.yaml
       variables:
         - name: body.webhooks-tekton-target-namespace
           value: kabanero

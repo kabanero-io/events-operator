@@ -562,7 +562,7 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
    bool: true if mediation should be used. A mediation matches if :
       - A selector is not present, and the name of the mediation matches the path
       - A selector is present, and 
-        - the urlPattern, if specified, matches the path. If not specified, the name of the mediation matches the path.
+        - the urlPattern, if specified, matches the path. 
         - the repository marker file, if specified, is found.
    bool: true if repository marker file is specified
    map[string]interface{}: content of the repository marker file, if the repository marker file is specified and exists.
@@ -571,24 +571,18 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
 */
 func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
     body map[string]interface{}, path string, kubeClient client.Client, namespace string, remoteAddr string) (error, bool, bool, map[string]interface{}) {
-    klog.Infof("mediationMatches for  path %s", path)
+    klog.Infof("Entry mediationMatches() for mediation %v, path %s", mediationImpl.Name, path)
 
     emptyMap := make(map[string]interface{})
     if mediationImpl.Selector == nil {
+        /* no selector. Mediation name is the path name */
         if  mediationImpl.Name == path {
             return nil, true, false, emptyMap
         }
     } else {
         selector := mediationImpl.Selector
-        urlPatternMatch := false
-        if selector.UrlPattern == ""  {
-            klog.Infof("no url pattern, matching %s and %s", mediationImpl.Name, path)
-            urlPatternMatch = mediationImpl.Name == path
-        }  else {
-            klog.Infof("urlPattern specified, matching %s and %s", selector.UrlPattern, path)
-            urlPatternMatch = selector.UrlPattern == path
-        }
-         klog.Infof("matchResult: %v", urlPatternMatch)
+        urlPatternMatch := selector.UrlPattern == path
+        klog.Infof("url path matching selector urlPattern %v to path %v, result: %v", selector.UrlPattern, path, urlPatternMatch)
 
         if !urlPatternMatch {
             return nil, false, false, emptyMap
@@ -600,7 +594,7 @@ func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eve
         }
 
         if repositoryType.NewVariable == "" {
-            return fmt.Errorf("newVariable not specified for Selector of Mediation %v", mediationImpl.Name), false, false, emptyMap
+            return fmt.Errorf("newVariable not specified for Selector.RepositoryType of Mediation %v", mediationImpl.Name), false, false, emptyMap
         }
 
         /* Only works with GitHub */
@@ -785,7 +779,7 @@ func generateMessageHandler(env *eventenv.EventEnv, key string) event.Handler {
             if matches {
                 /* process the message */
                 klog.Infof("Processing mediation %v hasRepoType: %v, repoTypeValue: %v", path, hasRepoType, repoTypeValue)
-                processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, path) )
+                processor := eventcel.NewProcessor(generateEventFunctionLookupHandler(mediator),generateSendEventHandler(env, mediator, eventMediationImpl.Name) )
                 err := processor.ProcessMessage(event.Header, event.Body, mediator, eventMediationImpl, hasRepoType, repoTypeValue, env.Namespace, env.Client, env.KabaneroIntegration, event.RemoteAddr)
                 if err != nil {
                     klog.Errorf("Error processing mediation %v, error: %v", path, err)
@@ -845,7 +839,9 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
          eventParams := processor.GetStatusParameters()
          eventParams = append(eventParams, eventsv1alpha1.EventStatusParameter{ status.PARAM_DESTINATION, destination})
 
+         klog.Infof("generateSendEventHandler calling LookupDestinationEdpoints, mediation %v, destination: %v", mediationName, destination)
          destinations := connectionsMgr.LookupDestinationEndpoints(endpoint)
+         klog.Infof("generateSendEventHandler returned from LookupDestinationEdpoints, mediation %v, destination: %v", mediationName, destination)
          if len(destinations) == 0 {
              summary := &eventsv1alpha1.EventStatusSummary  {
                   Operation: status.OPERATION_SEND_EVENT,
@@ -854,6 +850,7 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                   Message: "Destination not found in any EventConnection",
              }
              eventenv.GetEventEnv().StatusMgr.AddEventSummary(summary)
+             klog.Errorf("No destination for meidation %v, destination %v", mediationName, destination)
          }
          for _, dest := range destinations {
              /* TODO: add configurable timeout */
@@ -865,8 +862,10 @@ func generateSendEventHandler(env *eventenv.EventEnv, mediator *eventsv1alpha1.E
                      tempEventParams := processor.GetStatusParameters()
                      if https.Url  != nil {
                          url = *https.Url
+                         klog.Infof("Url: %v", *https.Url)
                          tempEventParams = append(tempEventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_URL, Value: url})
                      } else if https.UrlExpression != nil {
+                         klog.Infof("UrlExpression: %v", *https.UrlExpression)
                          tempEventParams = append(tempEventParams, eventsv1alpha1.EventStatusParameter { Name: status.PARAM_URLEXPRESSION, Value: *https.UrlExpression})
                          url, err = processor.EvaluateString(*https.UrlExpression)
                          if err != nil {

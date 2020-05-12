@@ -440,11 +440,13 @@ are generic enough to be used by other downstream listeners as well.
 - `body.webhooks-tekton-git-branch`: The branch in the github repository.
 - `body.webhooks-tekton-event-type`: One of `pull_request`, `push`, or `tag`.
 - `body.webhooks-tekton-monitor`: `true` if the monitor task should be started.
+- `body.webhooks-tekton-github-secret-name`: The name of the configured github secret.
+- `body.webhooks-tekton-github-secret-key-name`: The name of the key in the secret that points to the API token to access github. Currently, it is set to `password`.
 
 
 When processing an incoming webhook message, the flow is as follows:
 
-- The github secret, if set, is used to authenticate the sender.
+- The github secret is used to authenticate the sender.
 - The variables `body` and `header` are created to store the body and header of the message.
 - The selector is evaluated in turn to locate the matching mediation.
 - The pre-defined variables are created.
@@ -500,11 +502,6 @@ kind: Kabanero
 metadata:
   name: kabanero
 spec:
-  version: "0.8.0"
-  governancePolicy:
-    stackPolicy: none
-  events:
-    enable: true
   stacks:
     repositories:
     - name: central
@@ -512,7 +509,7 @@ spec:
         url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.9.0/kabanero-stack-hub-index.yaml    
     pipelines:
     - id: default
-      sha256: 307976f51bb8fc5b8ca0fa5d7478e7fb1c722811a2135f9c0d1cf900fc27269f
+      sha256: <substitue-with-correct-sha-256>
       https:
         url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/eventing-kabanero-pipelines.tar.gz
 ```
@@ -569,9 +566,9 @@ stringData:
 
 
 
-#### Create Webhook Event Listener
+#### Create Webhook Event Mediator
 
-To create a webhook listener, edit and apply the following yaml file:
+To create a webhook mediator, edit and apply the following yaml file:
 
 ```
 apiVersion: events.kabanero.io/v1alpha1
@@ -598,7 +595,7 @@ spec:
         - name: body.webhooks-tekton-service-account
           value: kabanero-pipeline
         - name: body.webhooks-tekton-docker-registry
-          value: <my-docker-registry> docker.io/<myorg>
+          value: <my-docker-registry>
         - name: body.webhooks-tekton-ssl-verify
           value: "false"
         - name: body.webhooks-tekton-insecure-skip-tls-verify
@@ -612,7 +609,7 @@ Note:
 
 - Ensure `secret`  matches the name of the Kubernetes secret that contains the Github API token.
 - Ensure `webhookSecret` matches the name of the Kubernetes secret that contains your webhook secret.
-- Change `<my-docker-registry>` the the value of the docker registry for your organization, such as `docker.io/myorg`.
+- Change `<my-docker-registry>` to the value of the docker registry for your organization, such as `docker.io/myorg`.
 
 
 use `oc get route webhook` to find the external hostname of the route that was created.  Use this host when creating a webhook.
