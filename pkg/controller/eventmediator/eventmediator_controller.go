@@ -562,7 +562,7 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
    bool: true if mediation should be used. A mediation matches if :
       - A selector is not present, and the name of the mediation matches the path
       - A selector is present, and 
-        - the urlPattern, if specified, matches the path. If not specified, the name of the mediation matches the path.
+        - the urlPattern, if specified, matches the path. 
         - the repository marker file, if specified, is found.
    bool: true if repository marker file is specified
    map[string]interface{}: content of the repository marker file, if the repository marker file is specified and exists.
@@ -571,24 +571,18 @@ func portChangedForService(service *corev1.Service, mediator *eventsv1alpha1.Eve
 */
 func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eventsv1alpha1.EventMediationImpl, header map[string][]string, 
     body map[string]interface{}, path string, kubeClient client.Client, namespace string, remoteAddr string) (error, bool, bool, map[string]interface{}) {
-    klog.Infof("mediationMatches for  path %s", path)
+    klog.Infof("Entry mediationMatches() for mediation %v, path %s", mediationImpl.Name, path)
 
     emptyMap := make(map[string]interface{})
     if mediationImpl.Selector == nil {
+        /* no selector. Mediation name is the path name */
         if  mediationImpl.Name == path {
             return nil, true, false, emptyMap
         }
     } else {
         selector := mediationImpl.Selector
-        urlPatternMatch := false
-        if selector.UrlPattern == ""  {
-            klog.Infof("no url pattern, matching %s and %s", mediationImpl.Name, path)
-            urlPatternMatch = mediationImpl.Name == path
-        }  else {
-            klog.Infof("urlPattern specified, matching %s and %s", selector.UrlPattern, path)
-            urlPatternMatch = selector.UrlPattern == path
-        }
-         klog.Infof("matchResult: %v", urlPatternMatch)
+        urlPatternMatch := selector.UrlPattern == path
+        klog.Infof("url path matching selector urlPattern %v to path %v, result: %v", selector.UrlPattern, path, urlPatternMatch)
 
         if !urlPatternMatch {
             return nil, false, false, emptyMap
@@ -600,7 +594,7 @@ func mediationMatches(mediator *eventsv1alpha1.EventMediator, mediationImpl *eve
         }
 
         if repositoryType.NewVariable == "" {
-            return fmt.Errorf("newVariable not specified for Selector of Mediation %v", mediationImpl.Name), false, false, emptyMap
+            return fmt.Errorf("newVariable not specified for Selector.RepositoryType of Mediation %v", mediationImpl.Name), false, false, emptyMap
         }
 
         /* Only works with GitHub */

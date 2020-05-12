@@ -12,7 +12,6 @@ spec:
   mediations:
     - name: webhook
       selector:
-        urlPattern: "webhook"
         repositoryType:
           newVariable: body.webhooks-appsody-config
           file: .appsody-config.yaml
@@ -28,7 +27,7 @@ spec:
         - name: body.webhooks-tekton-insecure-skip-tls-verify
           value: "true"
         - name: body.webhooks-tekton-local-deploy
-          value: "true"
+          value: "false"
         - name: body.webhooks-tekton-monitor-dashboard-url
           value: "https://tekton-dashboard-tekton-pipelines.apps.events.os.fyre.ibm.com/#/pipelineruns"
         - name: body.webhooks-tekton-gitops-url
@@ -38,7 +37,6 @@ spec:
         - = : "sendEvent(dest, body, header)"
     - name: gitops
       selector:
-        urlPattern: "webhook"
         repositoryType:
           newVariable: body.webhooks-gitops
           file: env/kustomization.yaml
