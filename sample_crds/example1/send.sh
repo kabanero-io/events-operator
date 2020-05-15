@@ -1,3 +1,3 @@
 #!/bin/bash
-host=webhook-default.apps.repines.os.fyre.ibm.com
-curl --insecure -d '{"attr1": "val1" ,"attr2":"val2"}' -H 'Content-Type: application/json' https://${host}/webhook
+host=webhook-kabanero.apps.events.os.fyre.ibm.com
+curl --insecure -d '{"attr1": "val1" ,"attr2":"val2"}' -H 'Content-Type: application/json' -H 'git-enterprise: ab.cd.ef' https://${host}/webhook

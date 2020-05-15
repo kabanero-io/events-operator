@@ -445,7 +445,7 @@ func (p *Processor) ProcessMessage(header map[string][]string, body map[string]i
 	defer klog.Infof("Leaving Processor.ProcessMessage for mediation %v", mediation.Name)
 
     var err error
-    p.env, p.variables,  err = p.initializeCELEnv(header, body, mediator, mediation, hasRepoType, repoTypeValue, namespace, client, kabaneroIntegration, remoteAddr)
+    p.env, err = p.initializeCELEnv(header, body, mediator, mediation, hasRepoType, repoTypeValue, namespace, client, kabaneroIntegration, remoteAddr)
 	if err != nil {
         summary := &eventsv1alpha1.EventStatusSummary  {
              Operation: status.OPERATION_INITIALIZE_VARIABLES,
@@ -458,7 +458,7 @@ func (p *Processor) ProcessMessage(header map[string][]string, body map[string]i
 		return err
 	}
 	if klog.V(5) {
-		klog.Infof("ProcessMessage after initializeCELEnv")
+		klog.Infof("ProcessMessage after initializeCELEnv. variables: %v", p.variables)
 	}
 
     klog.Infof("ProcessMessage evaluating mediation %v", mediation.Body)
@@ -739,7 +739,7 @@ Return: cel.Env: the CEL environment
     []EventStatusParameter: collected status parameters 
 	error: any error encountered
 */
-func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediator *eventsv1alpha1.EventMediator, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool, remoteAddr string) (cel.Env, map[string]interface{},  error) {
+func (p *Processor) initializeCELEnv(header map[string][]string, body map[string]interface{}, mediator *eventsv1alpha1.EventMediator, mediationImpl *eventsv1alpha1.EventMediationImpl, hasRepoType bool, repoTypeValue map[string]interface{}, namespace string, client client.Client, kabaneroIntegration bool, remoteAddr string) (cel.Env, error) {
 	if klog.V(5) {
 		klog.Infof("entering initializeCELEnv")
 		defer klog.Infof("Leaving initializeCELEnv")
@@ -754,15 +754,15 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
 	/* initialize empty CEL environment with additional functions */
 	env, err := p.initializeEmptyCELEnv()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	variables := make(map[string]interface{})
+	variables := p.variables
 
 	ident := decls.NewIdent(BODY, decls.NewMapType(decls.String, decls.Any), nil)
 	env, err = env.Extend(cel.Declarations(ident))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	/* Add message as a new variable */
 	variables[BODY] = body
@@ -770,7 +770,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
 	ident = decls.NewIdent(HEADER, decls.NewMapType(decls.String, decls.Any), nil)
 	env, err = env.Extend(cel.Declarations(ident))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	/* Add header as a new variable */
 	variables[HEADER] = header
@@ -780,7 +780,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
 	    destIdent := decls.NewIdent(dest, decls.NewPrimitiveType(exprpb.Type_STRING), nil)
         env, err = env.Extend(cel.Declarations(destIdent))
         if err != nil {
-            return nil, nil, err
+            return nil, err
        }
 	   variables[dest] = dest
     }
@@ -789,11 +789,11 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        /* set the value of repository type variable */
        data, err := json.Marshal(repoTypeValue)
        if err != nil {
-           return nil, nil, err
+           return nil, err
        }
        env, err = p.setOneVariable(env, mediationImpl.Selector.RepositoryType.NewVariable, string(data), variables)
        if  err != nil {
-           return nil, nil, err
+           return nil, err
        }
     }
 
@@ -803,37 +803,37 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        if exists {
            repositoryMap, ok := repository.(map[string]interface{})
            if ! ok {
-               return nil, nil, fmt.Errorf("body.repository is not a map[string]interface{}. type: %T, value: %v", repository, repository)
+               return nil, fmt.Errorf("body.repository is not a map[string]interface{}. type: %T, value: %v", repository, repository)
            }
            htmlUrl , exists := repositoryMap[HTML_URL]
            if ( exists ) {
                url, ok := htmlUrl.(string)
                if !ok {
-                   return nil, nil, fmt.Errorf("body.repository.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
+                   return nil, fmt.Errorf("body.repository.html_url is not a string. type: %T, value: %v", htmlUrl, htmlUrl)
                }
                p.statusParams.AddParameter(status.PARAM_REPOSITORY, url)
 
                server, org, repo, err :=  utils.ParseGithubURL(url)
                if err != nil {
-                   return nil, nil, err
+                   return nil, err
                }
 
                env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE,  "\"" + server  + "\"", variables)
                if  err != nil {
-                  return nil, nil, err
+                  return nil, err
                }
 
                env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_ORG_VARIABLE,  "\"" + org  + "\"", variables)
                if  err != nil {
-                  return nil, nil, err
+                  return nil, err
                }
 
                env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_REPO_VARIABLE,  "\"" + repo  + "\"", variables)
                if  err != nil {
-                  return nil, nil, err
+                  return nil, err
                }
            } else {
-               return nil, nil, fmt.Errorf("body.repository.html_url is not found")
+               return nil, fmt.Errorf("body.repository.html_url is not found")
            }
        } else {
            klog.Infof("body.repository not found. Repository related variables not generated. ")
@@ -842,37 +842,37 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
 
        tempEvent, ok  := header["X-Github-Event"]
        if !ok {
-           return nil, nil, fmt.Errorf("HTTP header does not contain X-Github-Event")
+           return nil, fmt.Errorf("HTTP header does not contain X-Github-Event")
        }
        if len(tempEvent) == 0 {
-           return nil, nil, fmt.Errorf("HTTP header X-Github-Event is empty")
+           return nil, fmt.Errorf("HTTP header X-Github-Event is empty")
        }
        githubEvent := tempEvent[0]
        if githubEvent == PULL_REQUEST {
            pr, ok := body[PULL_REQUEST]
            if !ok {
-              return nil, nil, fmt.Errorf("pull request message does not contain pull_request attribute")
+              return nil, fmt.Errorf("pull request message does not contain pull_request attribute")
            }
            prMap, ok := pr.(map[string]interface{})
            if !ok {
-              return nil, nil, fmt.Errorf("pull request not a map")
+              return nil, fmt.Errorf("pull request not a map")
            }
            head, ok := prMap[HEAD]
            if !ok {
-              return nil, nil, fmt.Errorf("pull request message does not contain pull_request.head attribute")
+              return nil, fmt.Errorf("pull request message does not contain pull_request.head attribute")
            }
            headMap, ok := head.(map[string]interface{})
            if !ok {
-              return nil, nil, fmt.Errorf("pull request pull_request.head not a map")
+              return nil, fmt.Errorf("pull request pull_request.head not a map")
            }
 
            ref, ok := headMap[REF]
            if !ok {
-              return nil, nil, fmt.Errorf("pull request message does not contain pull_request.head.ref attribute")
+              return nil, fmt.Errorf("pull request message does not contain pull_request.head.ref attribute")
            }
            branch, ok := ref.(string)
            if !ok {
-              return nil, nil, fmt.Errorf("pull request.head.ref %v is not a string, but of type %t", ref, ref)
+              return nil, fmt.Errorf("pull request.head.ref %v is not a string, but of type %t", ref, ref)
            }
            env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
        }  else if githubEvent == PUSH {
@@ -880,17 +880,17 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            if exists {
                refStr, ok := ref.(string)
                if !ok {
-                   return nil, nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
+                   return nil, fmt.Errorf("body.ref is not a string. type: %T, value: %v", ref, ref)
                }
                components := strings.Split(refStr, "/")
                if len(components) != 3 {
-                   return nil, nil, fmt.Errorf("body.ref does not contain 3 components", ref)
+                   return nil, fmt.Errorf("body.ref does not contain 3 components", ref)
                }
                if components[1] == HEADS {
                    branch := components[2]
                    env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GIT_BRANCH_VARIABLE,  "\"" + branch  + "\"", variables)
                    if  err != nil {
-                      return nil, nil, err
+                      return nil, err
                    }
                    p.statusParams.AddParameter(status.PARAM_BRANCH, branch)
                } else if components[1] == TAGS {
@@ -898,23 +898,23 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
                    tagVersion := components[2]
                    env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_TAG_VERSION, "\""+ tagVersion + "\"", variables)
                    if  err != nil {
-                      return nil, nil, err
+                      return nil, err
                    }
                    sha, ok := body[AFTER]
                    if !ok {
-                      return nil, nil, fmt.Errorf("tag does not contain after attribute")
+                      return nil, fmt.Errorf("tag does not contain after attribute")
                    }
                    shaStr, ok := sha.(string)
                    if !ok {
-                      return nil, nil, fmt.Errorf("tag after attribute not a string")
+                      return nil, fmt.Errorf("tag after attribute not a string")
                    }
                    env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_TAG_SHA, "\""+ shaStr + "\"", variables)
                    if  err != nil {
-                      return nil, nil, err
+                      return nil, err
                    }
                }
            } else {
-                  return nil, nil, fmt.Errorf("push event does not contain ref attribute")
+                  return nil, fmt.Errorf("push event does not contain ref attribute")
            }
        }
 
@@ -922,7 +922,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
 
        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_EVENT_TYPE_VARIABLE,  "\"" + githubEvent +"\"", variables)
        if  err != nil {
-          return nil, nil, err
+          return nil, err
        }
        /* This is decided by the event listener
        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
@@ -938,11 +938,11 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
                        /* Set up API token secret for monitor task */
                        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GITHUB_SECRET_NAME,  "\"" + repo.Github.Secret +"\"", variables)
                        if  err != nil {
-                          return nil, nil, err
+                          return nil, err
                        }
                        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GITHUB_SECRET_KEY_NAME,  "\"password\"", variables)
                        if  err != nil {
-                          return nil, nil, err
+                          return nil, err
                        }
                        break
                    }
@@ -954,16 +954,16 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
              mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
            stack, ok := repoTypeValue[STACK]
            if !ok {
-               return  nil, nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
+               return  nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
            }
            stackStr, ok := stack.(string)
            if !ok {
-               return  nil, nil, fmt.Errorf("stack %v not string in appsody-configy.yaml: %v", stack, repoTypeValue)
+               return  nil, fmt.Errorf("stack %v not string in appsody-configy.yaml: %v", stack, repoTypeValue)
            }
            p.statusParams.AddParameter(status.PARAM_STACK, stackStr)
            components := strings.Split(stackStr, ":")
            if len(components) != 2 {
-               return  nil, nil, fmt.Errorf("invalid stack value in appsody-configy.yaml:%v  ", stackStr)
+               return  nil, fmt.Errorf("invalid stack value in appsody-configy.yaml:%v  ", stackStr)
            }
     
            listener := ""
@@ -971,7 +971,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            if kabaneroIntegration {
                listener, version, err = utils.FindEventListenerForStack(client, namespace, components[0], components[1])
                if err != nil {
-                   return nil, nil, err
+                   return nil, err
                }
             }
             if listener == "" {
@@ -980,7 +980,7 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
             klog.Infof("For stack %s, found event listener %s, version: %v", stackStr, listener, version)
             env, err = p.setOneVariable(env, WEBHOOKS_KABANERO_TEKTON_LISTENER,  "\"" + listener + "\"", variables)
             if  err != nil {
-               return nil, nil, err
+               return nil, err
             }
         }
     }
@@ -991,19 +991,19 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            if variable.ValueExpression != nil {
                env, err = p.setOneVariable(env, variable.Name, *variable.ValueExpression, variables)
                if  err != nil {
-                   return nil, nil, err
+                   return nil, err
                }
            } else if variable.Value != nil {
                env, err = p.setOneVariable(env, variable.Name, "\""+ *variable.Value + "\"", variables)
                if  err != nil {
-                   return nil, nil, err
+                   return nil, err
                }
            }
        }
     }
 
 
-	return env, variables, nil
+	return env, nil
 }
 
 /* Evaluate an expressions that should result in a string
@@ -1743,6 +1743,32 @@ func GetTimestamp() string {
 	return fmt.Sprintf("%04d%02d%02d%02d%02d%02d%01d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), now.Nanosecond()/100000000)
 }
 
+/* Implementation of hasAttribute */
+func (p *Processor) hasAttribute(param ref.Val) ref.Val {
+	str, ok := param.(types.String)
+	if !ok {
+		return types.ValOrErr(param, "unexpected type '%v' passed to hasAttribute", param.Type())
+	}
+    paramStr := string(str)
+    attributes := strings.Split(paramStr, ".")
+    variable :=  reflect.ValueOf(p.variables)
+    for _, attr := range attributes {
+        if variable.Kind() != reflect.Map {
+            /* not a map */
+            klog.Infof("hasAttribute: parent of %v not a map but of type %v", attr, variable.Kind())
+            return types.Bool(false)
+        }
+        variable = variable.MapIndex(reflect.ValueOf(attr))
+        if !variable.IsValid() {
+            klog.Infof("hasAttribute: attribute component %v does not exist in %v", attr, paramStr)
+            return types.Bool(false)
+        }
+        /* Get the underlying value, and then reflect again to get its real type */
+        variable =  reflect.ValueOf(variable.Interface())
+    }
+
+    return types.Bool(true)
+}
 /* Implementation of eventListenerURL */
 func (p *Processor) eventListenerURL(param ref.Val) ref.Val {
 	str, ok := param.(types.String)
@@ -2435,6 +2461,8 @@ func (p *Processor) getAdditionalCELFuncs() cel.ProgramOption {
 
 func (p *Processor) initCELFuncs() {
 	p.additionalFuncDecls = cel.Declarations(
+		decls.NewFunction("hasAttribute",
+			decls.NewOverload("hasAttribute_string", []*exprpb.Type{decls.String}, decls.Bool)),
 		decls.NewFunction("eventListenerURL",
 			decls.NewOverload("eventListenerURL_string", []*exprpb.Type{decls.String}, decls.String)),
 		decls.NewFunction("filter",
@@ -2463,6 +2491,9 @@ func (p *Processor) initCELFuncs() {
 			decls.NewOverload("substring", []*exprpb.Type{decls.String, decls.Int}, decls.String)))
 
 	p.additionalFuncs = cel.Functions(
+		&functions.Overload{
+			Operator: "hasAttribute",
+			Unary:    p.hasAttribute},
 		&functions.Overload{
 			Operator: "eventListenerURL",
 			Unary:    p.eventListenerURL},

@@ -30,8 +30,14 @@ spec:
           value: "false"
         - name: body.webhooks-tekton-monitor-dashboard-url
           value: "https://tekton-dashboard-tekton-pipelines.apps.events.os.fyre.ibm.com/#/pipelineruns"
-        - name: body.webhooks-tekton-gitops-url
-          valueExpression: body.repository.html_url + "-gitops"
+        - name: body.webhooks-tekton-gitops-repository-url
+          value: https://github.ibm.com/kabanero-org-test/test1-gitops
+        - name: body.webhooks-tekton-gitops-repository-type
+          valueExpression: 'hasAttribute("header.X-GitHub-Enterprise-Host")? "ghe" : "github"'
+        - name: body.webhooks-tekton-gitops-commit-username
+          value: mcheng@us.ibm.com
+        - name: body.webhooks-tekton-gitops-commit-email
+          value: mcheng@us.ibm.com
       sendTo: [ "dest"  ]
       body:
         - = : "sendEvent(dest, body, header)"
@@ -39,7 +45,7 @@ spec:
       selector:
         repositoryType:
           newVariable: body.webhooks-gitops
-          file: env/kustomization.yaml
+          file: environments/kustomization.yaml
       variables:
         - name: body.webhooks-tekton-target-namespace
           value: kabanero
