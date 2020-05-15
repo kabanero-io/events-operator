@@ -30,8 +30,6 @@ spec:
           value: "false"
         - name: body.webhooks-tekton-monitor-dashboard-url
           value: "https://tekton-dashboard-tekton-pipelines.apps.events.os.fyre.ibm.com/#/pipelineruns"
-        - name: body.webhooks-tekton-gitops-url
-          valueExpression: body.repository.html_url + "-gitops"
       sendTo: [ "dest"  ]
       body:
         - = : "sendEvent(dest, body, header)"
@@ -39,7 +37,7 @@ spec:
       selector:
         repositoryType:
           newVariable: body.webhooks-gitops
-          file: env/kustomization.yaml
+          file: environments/kustomization.yaml
       variables:
         - name: body.webhooks-tekton-target-namespace
           value: kabanero

@@ -7,6 +7,11 @@ spec:
   createRoute: true
   mediations:
     - name: webhook
+      variables:
+        - name: "body.variable1"
+          valueExpression: 'hasAttribute("header.Git-Enterprise") ? "ghe" : "github"'
+        - name: "body.variable2"
+          valueExpression: 'hasAttribute("header.git1-ent") ? "ghe" : "github"'
       sendTo: [ "dest"  ]
       body:
         - = : 'sendEvent(dest, body, header)'
