@@ -512,10 +512,8 @@ Follow the instructions here: https://kabanero.io/docs/ref/general/installation/
 
 Edit and apply the following yaml
 
-- Change the sha256 value to the correct value. The correct value is stored in: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/eventing-kabanero-pipelines-tar-gz-sha256
-- Apply the yaml 
 
-```
+```yaml
 apiVersion: kabanero.io/v1alpha2
 kind: Kabanero
 metadata:
@@ -525,12 +523,12 @@ spec:
     repositories:
     - name: central
       https:
-        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.9.0/kabanero-stack-hub-index.yaml    
+        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.9.0/kabanero-stack-hub-index.yaml
     pipelines:
     - id: default
-      sha256: <substitue-with-correct-sha-256>
+      sha256: b4ef64ab464941603add8b5c0957b65463dc9bbbbb63b93eb55cf1ba6de733c6
       https:
-        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/eventing-kabanero-pipelines.tar.gz
+        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/kabanero-events-pipelines.tar.gz
 ```
 
 
