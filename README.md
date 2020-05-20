@@ -6,6 +6,7 @@
 - [Functional Specification](#functional-specification)
 - [Webhook Processing](#webhook-processing)
 - [Kabanero Integration](#kabanero-integration)
+- [Tech Preview](#tech-preview)
 
 <a name="introduction"></a>
 ## Introduction
@@ -268,6 +269,21 @@ Example:
   - =: 'sendEvent(tekton-listener, body, header)'
 ```
 
+#### eventListenerURL("deploy-kustomize-listener")
+
+The eventListenerURL function returns the URL for an event listener.
+
+Input:
+
+- listener: name of the event listener in the current namespace
+
+Output:  the internal URL of the event listener if found. Otherwise, an error message.
+
+Example:
+
+```yaml
+  - =: 'url = eventListenerURL("deploy-kustomize-listener")'
+```
 
 <!--
 ##### jobID
@@ -442,6 +458,9 @@ are generic enough to be used by other downstream listeners as well.
 - `body.webhooks-tekton-monitor`: `true` if the monitor task should be started.
 - `body.webhooks-tekton-github-secret-name`: The name of the configured github secret.
 - `body.webhooks-tekton-github-secret-key-name`: The name of the key in the secret that points to the API token to access github. Currently, it is set to `password`.
+- `body.webhooks-tekton-sha`: for a tag event, the SHA of the repository commit.
+- `body.webhooks-tekton-tag-version`: for a tag event, the value of the tag, usually a new version number such as 0.1.0.
+- `body.webhooks-kabanero-tekton-listener`: for Appsody repositories, the URL of the best match Tekton event listener configured to perform Appsody builds, or `http://UNKNOWN_KABAKERO_TEKTON_LISTENER` if not found.
 
 
 When processing an incoming webhook message, the flow is as follows:
@@ -493,10 +512,8 @@ Follow the instructions here: https://kabanero.io/docs/ref/general/installation/
 
 Edit and apply the following yaml
 
-- Change the sha256 value to the correct value. The correct value is stored in: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/eventing-kabanero-pipelines-tar-gz-sha256
-- Apply the yaml 
 
-```
+```yaml
 apiVersion: kabanero.io/v1alpha2
 kind: Kabanero
 metadata:
@@ -506,12 +523,12 @@ spec:
     repositories:
     - name: central
       https:
-        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.9.0/kabanero-stack-hub-index.yaml    
+        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.9.0/kabanero-stack-hub-index.yaml
     pipelines:
     - id: default
-      sha256: <substitue-with-correct-sha-256>
+      sha256: b4ef64ab464941603add8b5c0957b65463dc9bbbbb63b93eb55cf1ba6de733c6
       https:
-        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/eventing-kabanero-pipelines.tar.gz
+        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/kabanero-events-pipelines.tar.gz
 ```
 
 
@@ -570,7 +587,7 @@ stringData:
 
 To create a webhook mediator, edit and apply the following yaml file:
 
-```
+```yaml
 apiVersion: events.kabanero.io/v1alpha1
 kind: EventMediator
 metadata:
@@ -585,7 +602,6 @@ spec:
   mediations:
     - name: webhook
       selector:
-        urlPattern: "webhook"
         repositoryType:
           newVariable: body.webhooks-appsody-config
           file: .appsody-config.yaml
@@ -600,6 +616,10 @@ spec:
           value: "false"
         - name: body.webhooks-tekton-insecure-skip-tls-verify
           value: "true"
+        - name: body.webhooks-tekton-local-deploy
+          value: "false"
+        - name: body.webhooks-tekton-monitor-dashboard-url
+          value: <tekton-dashboard>
       sendTo: [ "dest"  ]
       body:
         - = : "sendEvent(dest, body, header)"
@@ -610,6 +630,8 @@ Note:
 - Ensure `secret`  matches the name of the Kubernetes secret that contains the Github API token.
 - Ensure `webhookSecret` matches the name of the Kubernetes secret that contains your webhook secret.
 - Change `<my-docker-registry>` to the value of the docker registry for your organization, such as `docker.io/myorg`.
+- Set `body.webhooks-tekton-local-deploy` to true if you want to deploy the application after build completes successfully.  Note: it must remain "false" if you want to use gitops tech preview to deploy the application.
+- set `<tekton-dashboard>` to the URL for your Tekton dashboard.
 
 
 use `oc get route webhook` to find the external hostname of the route that was created.  Use this host when creating a webhook.
@@ -618,7 +640,7 @@ use `oc get route webhook` to find the external hostname of the route that was c
 
 Apply the following yaml:
 
-```
+```yaml
 apiVersion: events.kabanero.io/v1alpha1
 kind: EventConnections
 metadata:
@@ -852,3 +874,134 @@ spec:
       - cel:
           filter: 'body["webhooks-tekton-monitor"] '
 ```
+
+
+
+<a name="tech-preview"></a>
+### Tech Preview
+
+You may configure event mediator to use the tech preview gitops pipeline to deploys your application. 
+To use the tech preview, these additional steps are required:
+
+#### Gitops Repository
+
+Configure your gitops repository per instructions in the Kabanero pipelines section.
+
+#### Webhook Mediator
+
+Edit and apply the following webhook mediator, instead of using the default webhook mediator:
+
+```yaml
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: webhook
+spec:
+  createListener: true
+  createRoute: true
+  repositories:
+    - github:
+        secret: ghe-https-secret
+        webhookSecret: ghe-webhook-secret
+  mediations:
+    - name: webhook
+      selector:
+        repositoryType:
+          newVariable: body.webhooks-appsody-config
+          file: .appsody-config.yaml
+      variables:
+        - name: body.webhooks-tekton-target-namespace
+          value: kabanero
+        - name: body.webhooks-tekton-service-account
+          value: kabanero-pipeline
+        - name: body.webhooks-tekton-docker-registry
+          value: <my-docker-registry>
+        - name: body.webhooks-tekton-ssl-verify
+          value: "false"
+        - name: body.webhooks-tekton-insecure-skip-tls-verify
+          value: "true"
+        - name: body.webhooks-tekton-local-deploy
+          value: "false"
+        - name: body.webhooks-tekton-monitor-dashboard-url
+          value: <tekton-dashboard>
+      sendTo: [ "dest"  ]
+      body:
+        - = : "sendEvent(dest, body, header)"
+    - name: gitops
+      selector:
+        repositoryType:
+          newVariable: body.webhooks-gitops
+          file: environments/kustomization.yaml
+      variables:
+        - name: body.webhooks-tekton-target-namespace
+          value: kabanero
+        - name: body.webhooks-tekton-service-account
+          value: kabanero-pipeline
+        - name: body.webhooks-tekton-docker-registry
+          value: <my-docker-registry>
+        - name: body.webhooks-tekton-ssl-verify
+          value: "false"
+        - name: body.webhooks-tekton-insecure-skip-tls-verify
+          value: "true"
+        - name: body.webhooks-tekton-local-deploy
+          value: "false"
+        - name: body.webhooks-tekton-monitor-dashboard-url
+          value: <tekton-dashboard>
+      sendTo: [ "dest"  ]
+      body:
+        - = : "sendEvent(dest, body, header)"
+```
+
+Note:
+
+- Ensure `secret`  matches the name of the Kubernetes secret that contains the Github API token.
+- Ensure `webhookSecret` matches the name of the Kubernetes secret that contains your webhook secret.
+- Change `<my-docker-registry>` to the value of the docker registry for your organization, such as `docker.io/myorg`.
+- `body.webhooks-tekton-local-deploy` must be set to `false`.
+- set `<tekton-dashboard>` to the URL for your Tekton dashboard.
+
+
+#### EventConnections
+
+Create and apply the following EventConnections, instead of using the default:
+
+```yaml
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: connections
+spec:
+  connections:
+    - from: 
+        mediator:
+            name: webhook
+            mediation: webhook
+            destination: dest
+      to:
+            - urlExpression:  body["webhooks-kabanero-tekton-listener"]
+              insecure: true
+    - from: 
+        mediator:
+            name: webhook
+            mediation: gitops
+            destination: dest
+      to:
+        - https:
+            - urlExpression:  eventListenerURL("deploy-kustomize-listener")
+              insecure: true
+```
+
+Note that:
+
+- the function `eventListenerURL` resolves to the URL of a configured Tekton event listener. For the gitops mediation, it resolves to the Tekton event listener named `deploy-kustomize-listener`, which is used to drive a deployment pipeline.
+
+
+#### Using the Gitops Pipeline
+
+- You update the master branch of your your application.
+- A webhook event is automatically sent to the webhook mediator.
+- A new build pipeline is automatically triggered.
+- If the build is successful, a new pull request is created automatically in your gitops repository.
+- You review and merge the pull request.
+- A new deployment pipeline is automatically triggered.
+- if the deployment succeeds, an AppsodyApplication is automatically created or updated in the same namespace as the build.
