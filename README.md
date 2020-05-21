@@ -819,9 +819,9 @@ mediation. It verifies the url pattern of the webhook request, the github secret
 allows it to associate the webhook event with the mediation `appsody`.
 
 The event mediator applies additional logic for appsody projects. First, it finds the best matching active stack by
-matching its `.spec.images[i].name` to the stack name as defined in `appsody-config.yaml`. 
-It uses `.spec.images[i].version` to find the best semantically matched version. 
-It uses `.status` to ensure that the version is active. 
+matching its `.spec.images[i].name` to the stack name as defined in `appsody-config.yaml`.
+It uses `.spec.images[i].version` to find the best semantically matched version.
+It uses `.status` to ensure that the version is active.
 It creates the variable `message.body.webhooks-kabanero-tekton-listener` to be `listener-12345678`.
 
 It also creates all the default variables and user defined variables to be passed downstream to the Tekton event
@@ -832,7 +832,7 @@ When sending the message downstream, the URL as defined in the EventConnection i
 
 The Tekton event listener is configured to trigger the correct pipeline based on input parameters.
 For the example below, there is a separate pipeline called depending on whether it is a push or pull request.
-In addition, a separate monitor task is created when the event mediator decides. 
+In addition, a separate monitor task is created when the event mediator decides.
 
 ```yaml
 apiVersion: tekton.dev/v1alpha1
@@ -1004,4 +1004,304 @@ Note that:
 - If the build is successful, a new pull request is created automatically in your gitops repository.
 - You review and merge the pull request.
 - A new deployment pipeline is automatically triggered.
-- if the deployment succeeds, an AppsodyApplication is automatically created or updated in the same namespace as the build.
+- if the deployment succeeds, an AppsodyApplication is automatically created or updated in the same namespace as the
+  build.
+
+## Migrating from Tekton Webhooks Extension
+
+If you are already using the Tekton Webhooks extension, and you would like to continue to use your existing pipelines
+with Kabanero Events, you can do so by creating a passthrough mediation. The passthrough mediation will pass any events
+it receives to the configured EventListener.
+
+The steps to use an existing pipeline with the webhook mediator is as follows:
+
+1. Apply the `monitor-task-binding.yaml` and `event-trigger-binding.yaml` TriggerBindings.
+2. Create an internal `EventListener` to route traffic to the existing pipelines. See below for an example
+   EventListener. Note that the EventListener should be applied in same namespace as the webhook extension (i.e.
+   `tekton-pipelines`).
+3. Create a webhook mediator that passes events through to to the `EventListener`.
+4. Remove the existing webhook configuration created by Tekton Webhooks extension from your project on Github
+5. Configure a webhook on the project in Github to call the webhook mediator.
+
+### Setting up the EventListener
+
+A few `TriggerBindings` need to be applied to be able to use your existing Tekton triggers created by the Tekton
+webhooks extension. Run the following two commands to create these resources:
+
+```shell
+cat <<'EOF' | kubectl apply -n tekton-pipelines -f -
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: kabanero-events-webhook-trigger-binding
+spec:
+  params:
+  - name: webhooks-tekton-release-name
+    value: "$(body.webhooks-tekton-release-name)"
+  - name: webhooks-tekton-target-namespace
+    value: "$(body.webhooks-tekton-target-namespace)"
+  - name: webhooks-tekton-service-account
+    value: "$(body.webhooks-tekton-service-account)"
+  - name: webhooks-tekton-git-server
+    value: "$(body.webhooks-tekton-git-server)"
+  - name: webhooks-tekton-git-org
+    value: "$(body.webhooks-tekton-git-org)"
+  - name: webhooks-tekton-git-repo
+    value: "$(body.webhooks-tekton-git-repo)"
+  - name: webhooks-tekton-pull-task
+    value: "$(body.webhooks-tekton-pull-task)"
+  - name: webhooks-tekton-ssl-verify
+    value: "$(body.webhooks-tekton-ssl-verify)"
+  - name: webhooks-tekton-insecure-skip-tls-verify
+    value: "$(body.webhooks-tekton-insecure-skip-tls-verify)"
+  - name: webhooks-tekton-docker-registry
+    value: "$(body.webhooks-tekton-docker-registry)"
+EOF
+```
+
+```shell
+cat <<'EOF' | kubectl apply -n tekton-pipelines -f -
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: kabanero-events-monitor-task-binding
+spec:
+  params:
+  - name: commentsuccess
+    value: $(body.commentsuccess)
+  - name: commentfailure
+    value: $(body.commentfailure)
+  - name: commenttimeout
+    value: $(body.commenttimeout)
+  - name: commentmissing
+    value: $(body.commentmissing)
+  - name: gitsecretname
+    value: $(body.gitsecretname)
+  - name: gitsecretkeyname
+    value: $(body.gitsecretkeyname)
+  - name: dashboardurl
+    value: $(body.dashboardurl)
+  - name: insecure-skip-tls-verify
+    value: $(body.webhooks-tekton-insecure-skip-tls-verify)
+  - name: provider
+    value: $(body.provider)
+  - name: apiurl
+    value: $(body.apiurl)
+EOF
+```
+
+The internal EventListener that the mediator will forward events to can now be created. The example EventListener
+configuration demonstrates how to set up an EventListener that processes GH `push` and `pull_request` events for two
+stacks: `java-openliberty` and `nodejs-express`. Push and pull requests events that are handled will cause the
+appropriate `build-push` pipeline to be executed.
+
+```yaml
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: kabanero-event-listener
+  namespace: tekton-pipelines
+spec:
+  serviceAccountName: tekton-webhooks-extension-eventlistener
+  triggers:
+  - name: kabanero-ol-push-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("java-openliberty:") && body["webhooks-tekton-event-type"] == "push" && body["webhooks-tekton-git-branch"] == "master"'
+    template:
+      apiVersion: v1alpha1
+      name: java-openliberty-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: java-openliberty-build-push-pl-push-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-ol-pullrequest-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("java-openliberty:") && body["webhooks-tekton-event-type"] == "pull_request" && body["webhooks-tekton-git-branch"] != "master" && (body["action"] == "opened" || body["action"] == "synchronize")'
+    template:
+      apiVersion: v1alpha1
+      name: java-openliberty-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: java-openliberty-build-push-pl-pullrequest-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-nodejs-express-push-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("nodejs-express:") && body["webhooks-tekton-event-type"] == "push" && body["webhooks-tekton-git-branch"] == "master"'
+    template:
+      apiVersion: v1alpha1
+      name: nodejs-express-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: nodejs-express-build-push-pl-push-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-nodejs-express-pullrequest-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("nodejs-express:") && body["webhooks-tekton-event-type"] == "pull_request" && body["webhooks-tekton-git-branch"] != "master" && (body["action"] == "opened" || body["action"] == "synchronize")'
+    template:
+      apiVersion: v1alpha1
+      name: nodejs-express-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: nodejs-express-build-push-pl-pullrequest-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-monitor-task-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-tekton-event-type"] == "pull_request" && body["webhooks-tekton-git-branch"] != "master" && (body["action"] == "opened" || body["action"] == "synchronize")'
+    template:
+      apiversion: v1alpha1
+      name: monitor-task-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: monitor-task-github-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-monitor-task-binding
+```
+
+The example `EventListener` can be modified for whichever pipelines you would like to execute based on the stack and
+event that is handled. The `TriggerTemplate`s and `TriggerBindings` needed can be determined by inspecting your current
+Webhooks extension `EventListener`:
+
+```shell
+$ oc get el <the-eventlistener-being-migrated> -o yaml | less
+...
+```
+
+Note that any `TriggerBindings` prefixed with `wext-` do not need to be added since you already applied the replacement
+`TriggerBinding`s above.
+
+Once you are finished creating the replacement EventListener, it should be applied to the `tekton-pipelines` namespaces
+like so:
+
+```
+$ oc apply -f kabanero-event-listener.yaml -n tekton-pipelines
+```
+
+### Setting up the Passthrough Event Mediation
+
+To setup a passthrough event mediation, first set up the connections to route from the mediation to the EventListener
+created in the previous step:
+
+```yaml
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: example-connections
+spec:
+  connections:
+    - from: 
+        mediator:
+            name: example-webhook-mediator
+            mediation: example-webhook
+            destination: dest
+      to:
+        - https:
+            - url: "http://el-<name-of-the-event-listener-created-above>.tekton-pipelines.svc.cluster.local:8080"
+              insecure: true
+```
+
+The passthrough webhook mediation should then look like:
+
+```yaml
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: example-webhook-mediator
+spec:
+  createListener: true
+  createRoute: true
+  repositories:
+    - github:
+        secret: ghe-https-secret
+        webhookSecret: ghe-webhook-secret
+  mediations:
+    - name: example-webhook
+      selector:
+        repositoryType:
+          newVariable: body.webhooks-appsody-config
+          file: .appsody-config.yaml
+      variables:
+        - name: body.webhooks-tekton-target-namespace
+          value: kabanero
+        - name: body.webhooks-tekton-service-account
+          value: kabanero-pipeline
+        # body.webhooks-tekton-docker-registry is docker registry you want; e.g. `docker.io/<your-dockerhub-user-name>`
+        - name: body.webhooks-tekton-docker-registry
+          value: <your-docker-registry>
+        - name: body.webhooks-tekton-ssl-verify
+          value: "false"
+        - name: body.webhooks-tekton-insecure-skip-tls-verify
+          value: "true"
+        - name: body.webhooks-tekton-local-deploy
+          value: "false"
+        - name: body.webhooks-tekton-monitor-dashboard-url
+          value: "https://tekton-dashboard-tekton-pipelines.apps.<your-domain>/#/pipelineruns"
+        # Additional values needed by the webhooks extension TriggerBindings
+        - name: body.webhooks-tekton-release-name
+          valueExpression: 'body["repository"]["name"]'
+        - name: body.webhooks-tekton-git-server
+          value: <gh-or-ghe-domain>
+        - name: body.webhooks-tekton-git-org
+          value: YOUR_GIT_ORG
+        - name: body.webhooks-tekton-git-repo
+          valueExpression: 'body["repository"]["name"]'
+        - name: body.webhooks-tekton-pull-task
+          value: monitor-task
+        # Values needed by the monitor task.
+        - name: body.commentsuccess
+          value: Success
+        - name: body.commentfailure
+          value: Failed
+        - name: body.commenttimeout
+          value: Unknown
+        - name: body.commentmissing
+          value: Missing
+        - name: body.gitsecretname
+          value: <your-git-secret-name>
+        - name: body.gitsecretkeyname
+          value: <your-git-secret-key-name>
+        - name: body.dashboardurl
+          value: tekton-dashboard-tekton-pipelines.apps.<your-domain>
+        - name: body.provider
+          value: github
+        - name: body.apiurl
+          value: https://<gh-or-ghe-apiurl>/api/v3/
+      sendTo: [ "dest"  ]
+      body:
+        - = : "sendEvent(dest, body, header)"
+```
+
+Set the values to the variables as needed, particularly those whose values enclosed within `<>`. These values can be
+determined by looking at the `wext-` trigger binding that the Webhooks extension created for your `EventListener`.
+Afterwards, apply both the connections and webhook mediation YAML to the `kabanero` namespace. Finally, update your
+project's webhook to use event mediations by:
+
+1. Go to your GitHub project's page and click `Settings`.
+2. Under `Hooks`, find the webhook that the Webhooks extension created and edit it.
+3. Replace the `Payload URL` with the route of the events webhook listener. For example:
+
+   ```
+   https://example-webhook-mediator-kabanero.apps.mydomain.com/example-webhook
+   ```
+
+4. Click the `Send me Everything` button and then click `Update Webhook` to finalize your changes.
+5. Test the changes by making a change to your project and verifying that the `PipelineRun` and other resources are
+   created correctly.

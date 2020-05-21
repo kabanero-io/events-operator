@@ -1,0 +1,65 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventMediator
+metadata:
+  name: example-webhook-mediator
+spec:
+  createListener: true
+  createRoute: true
+  repositories:
+    - github:
+        secret: ghe-https-secret
+        webhookSecret: ghe-webhook-secret
+  mediations:
+    - name: example-webhook
+      selector:
+        repositoryType:
+          newVariable: body.webhooks-appsody-config
+          file: .appsody-config.yaml
+      variables:
+        - name: body.webhooks-tekton-target-namespace
+          value: kabanero
+        - name: body.webhooks-tekton-service-account
+          value: kabanero-pipeline
+        - name: body.webhooks-tekton-docker-registry
+          value: DOCKER-REGISTRY-TO-PUSH-TO
+        - name: body.webhooks-tekton-ssl-verify
+          value: "false"
+        - name: body.webhooks-tekton-insecure-skip-tls-verify
+          value: "true"
+        - name: body.webhooks-tekton-local-deploy
+          value: "false"
+        - name: body.webhooks-tekton-monitor-dashboard-url
+          value: "https://tekton-dashboard-tekton-pipelines.apps.YOUR_DOMAIN/#/pipelineruns"
+        # Additional values needed by the webhooks extension TriggerBindings
+        - name: body.webhooks-tekton-release-name
+          valueExpression: 'body["repository"]["name"]'
+        - name: body.webhooks-tekton-git-server
+          value: GH_OR_GHE_SERVER_DOMAIN
+        - name: body.webhooks-tekton-git-org
+          value: YOUR_GIT_ORG
+        - name: body.webhooks-tekton-git-repo
+          valueExpression: 'body["repository"]["name"]'
+        - name: body.webhooks-tekton-pull-task
+          value: monitor-task
+        # Values needed by the monitor task.
+        - name: body.commentsuccess
+          value: Success
+        - name: body.commentfailure
+          value: Failed
+        - name: body.commenttimeout
+          value: Unknown
+        - name: body.commentmissing
+          value: Missing
+        - name: body.gitsecretname
+          value: TEKTON_WEBHOOKS_EXT_SECRET_NAME
+        - name: body.gitsecretkeyname
+          value: TEKTON_WEBHOOKS_EXT_SECRET_KEYNAME
+        - name: body.dashboardurl
+          value: tekton-dashboard-tekton-pipelines.apps.YOUR_DOMAIN
+        - name: body.provider
+          value: github
+        - name: body.apiurl
+          value: https://GH_OR_GHE_SERVER_DOMAIN/api/v3/
+      sendTo: [ "dest"  ]
+      body:
+        - = : "sendEvent(dest, body, header)"
