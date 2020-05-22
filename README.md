@@ -553,7 +553,7 @@ If you need to create a new secret, edit and apply the following secret:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: github-secret
+  name: my-github-secret
   namespace: kabanero
   annotations:
     tekton.dev/git-0: https://github.com
@@ -577,7 +577,7 @@ If you have not yet configured a secret for your Tekton pipeline to access your 
 apiVersion: v1
 kind: Secret
 metadata:
-  name: docker-secret
+  name: my-docker-secret
   annotations:
     tekton.dev/docker-0: https://index.docker.io
 type: kubernetes.io/basic-auth
@@ -594,8 +594,8 @@ Note:
 
 ##### Update Pipeline Service Account
 
-You may use the secrets you created for Tekton pipelines 
-by associating them with your pipeline service account. 
+Associate the secrets you created with your Tekton pipeline service account.
+This enables them to be used when running the pipelines.
 The default service account is `kabanero-pipeline`.
 
 ```
@@ -617,7 +617,7 @@ Save the file when done.
 The webhook secret is the secret you configure on Github, and embedded in each webhook message received from github. 
 It enables the mediator to verify that the message is indeed from github. 
 
-Edit and apply the following secret. Change `<my github secret>` to a string of your choosing. You'll provide the same string when configuring the webhook secret on Github.
+Edit and apply the following secret. Change `<my-webhook-secret>` to a string of your choosing. You'll provide the same string when configuring the webhook secret on Github.
 
 ```
 apiVersion: v1
@@ -625,7 +625,7 @@ kind: Secret
 metadata:
   name: my-webhook-secret
 stringData:
-  secretToken: <my github secret>
+  secretToken: <my-webhook-secret>
 ```
 
 
