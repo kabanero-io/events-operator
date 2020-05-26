@@ -7,6 +7,7 @@
 - [Webhook Processing](#webhook-processing)
 - [Kabanero Integration](#kabanero-integration)
 - [Tech Preview](#tech-preview)
+- [Migrating from Tekton Webhooks Extension](#migrating-from-tekton-webhooks-extension)
 
 <a name="introduction"></a>
 ## Introduction
@@ -995,7 +996,6 @@ Note that:
 
 - the function `eventListenerURL` resolves to the URL of a configured Tekton event listener. For the gitops mediation, it resolves to the Tekton event listener named `deploy-kustomize-listener`, which is used to drive a deployment pipeline.
 
-
 #### Using the Gitops Pipeline
 
 - You update the master branch of your your application.
@@ -1019,9 +1019,9 @@ The steps to use an existing pipeline with the webhook mediator is as follows:
 2. Create an internal `EventListener` to route traffic to the existing pipelines. See below for an example
    EventListener. Note that the EventListener should be applied in same namespace as the webhook extension (i.e.
    `tekton-pipelines`).
-3. Create a webhook mediator that passes events through to to the `EventListener`.
+3. Create a webhook mediator that passes events through to the `EventListener`.
 4. Remove the existing webhook configuration created by Tekton Webhooks extension from your project on Github
-5. Configure a webhook on the project in Github to call the webhook mediator.
+5. Configure a webhook at either the organization level or the project level in Github to call the webhook mediator.
 
 ### Setting up the EventListener
 
@@ -1091,7 +1091,7 @@ EOF
 ```
 
 The internal EventListener that the mediator will forward events to can now be created. The example EventListener
-configuration demonstrates how to set up an EventListener that processes GH `push` and `pull_request` events for two
+configuration demonstrates how to set up an EventListener that processes GitHub `push` and `pull_request` events for two
 stacks: `java-openliberty` and `nodejs-express`. Push and pull requests events that are handled will cause the
 appropriate `build-push` pipeline to be executed.
 
@@ -1256,13 +1256,7 @@ spec:
           value: "https://tekton-dashboard-tekton-pipelines.apps.<your-domain>/#/pipelineruns"
         # Additional values needed by the webhooks extension TriggerBindings
         - name: body.webhooks-tekton-release-name
-          valueExpression: 'body["repository"]["name"]'
-        - name: body.webhooks-tekton-git-server
-          value: <gh-or-ghe-domain>
-        - name: body.webhooks-tekton-git-org
-          value: YOUR_GIT_ORG
-        - name: body.webhooks-tekton-git-repo
-          valueExpression: 'body["repository"]["name"]'
+          valueExpression: 'body["webhooks-tekton-git-repo"]'
         - name: body.webhooks-tekton-pull-task
           value: monitor-task
         # Values needed by the monitor task.
@@ -1275,15 +1269,15 @@ spec:
         - name: body.commentmissing
           value: Missing
         - name: body.gitsecretname
-          value: <your-git-secret-name>
+          valueExpression: 'body["webhooks-tekton-github-secret-name"]'
         - name: body.gitsecretkeyname
-          value: <your-git-secret-key-name>
+          valueExpression: 'body["webhooks-tekton-github-secret-key-name"]'
         - name: body.dashboardurl
           value: tekton-dashboard-tekton-pipelines.apps.<your-domain>
         - name: body.provider
           value: github
         - name: body.apiurl
-          value: https://<gh-or-ghe-apiurl>/api/v3/
+          value: https://<github-url>/api/v3/
       sendTo: [ "dest"  ]
       body:
         - = : "sendEvent(dest, body, header)"
@@ -1291,17 +1285,27 @@ spec:
 
 Set the values to the variables as needed, particularly those whose values enclosed within `<>`. These values can be
 determined by looking at the `wext-` trigger binding that the Webhooks extension created for your `EventListener`.
-Afterwards, apply both the connections and webhook mediation YAML to the `kabanero` namespace. Finally, update your
-project's webhook to use event mediations by:
+Afterwards, apply both the connections and webhook mediation YAML to the `kabanero` namespace.
 
-1. Go to your GitHub project's page and click `Settings`.
-2. Under `Hooks`, find the webhook that the Webhooks extension created and edit it.
-3. Replace the `Payload URL` with the route of the events webhook listener. For example:
+### Configuring the Webhook
 
-   ```
-   https://example-webhook-mediator-kabanero.apps.mydomain.com/example-webhook
-   ```
+The webhook that calls the webhook mediator can be configured at the project level or at the organization level. The
+Tekton webhooks extension only supported project-level webhooks, but Kabanero events also supports webhooks at the
+organization level. An organization-level webhook is suggested to save users from having to configure a webhook for
+each repository.
 
-4. Click the `Send me Everything` button and then click `Update Webhook` to finalize your changes.
-5. Test the changes by making a change to your project and verifying that the `PipelineRun` and other resources are
-   created correctly.
+The webhook should be created with the following information:
+
+- **Payload URL**: `https://example-webhook-mediator-kabanero.apps.mydomain.com/`. Note that the route can be determined
+  using
+
+  ```shell
+  $ oc get route -n kabanero
+  ...
+  ```
+
+- **Content type**: `application/json`
+- **Secret**: Your webhook secret (optional, but recommended).
+- **SSL verification**: Enable SSL verification (recommended), but this requires that your OpenShift certificate to 
+  be trusted
+- **Which events would you like to trigger this webhook?**: Send me **everything**.

@@ -32,13 +32,7 @@ spec:
           value: "https://tekton-dashboard-tekton-pipelines.apps.YOUR_DOMAIN/#/pipelineruns"
         # Additional values needed by the webhooks extension TriggerBindings
         - name: body.webhooks-tekton-release-name
-          valueExpression: 'body["repository"]["name"]'
-        - name: body.webhooks-tekton-git-server
-          value: GH_OR_GHE_SERVER_DOMAIN
-        - name: body.webhooks-tekton-git-org
-          value: YOUR_GIT_ORG
-        - name: body.webhooks-tekton-git-repo
-          valueExpression: 'body["repository"]["name"]'
+          valueExpression: 'body["webhooks-tekton-git-repo"]'
         - name: body.webhooks-tekton-pull-task
           value: monitor-task
         # Values needed by the monitor task.
@@ -51,15 +45,15 @@ spec:
         - name: body.commentmissing
           value: Missing
         - name: body.gitsecretname
-          value: TEKTON_WEBHOOKS_EXT_SECRET_NAME
+          value: 'body["webhooks-tekton-github-secret-name"]'
         - name: body.gitsecretkeyname
-          value: TEKTON_WEBHOOKS_EXT_SECRET_KEYNAME
+          value: 'body["webhooks-tekton-github-secret-key-name"]'
         - name: body.dashboardurl
           value: tekton-dashboard-tekton-pipelines.apps.YOUR_DOMAIN
         - name: body.provider
           value: github
         - name: body.apiurl
-          value: https://GH_OR_GHE_SERVER_DOMAIN/api/v3/
+          value: https://<github-url>/api/v3/
       sendTo: [ "dest"  ]
       body:
         - = : "sendEvent(dest, body, header)"
