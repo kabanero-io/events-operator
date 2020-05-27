@@ -1,0 +1,79 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: kabanero-event-listener
+  namespace: tekton-pipelines
+spec:
+  serviceAccountName: tekton-webhooks-extension-eventlistener
+  triggers:
+  - name: kabanero-ol-push-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("java-openliberty:") && body["webhooks-tekton-event-type"] == "push" && body["webhooks-tekton-git-branch"] == "master"'
+    template:
+      apiVersion: v1alpha1
+      name: java-openliberty-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: java-openliberty-build-push-pl-push-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-ol-pullrequest-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("java-openliberty:") && body["webhooks-tekton-event-type"] == "pull_request" && body["webhooks-tekton-git-branch"] != "master" && (body["action"] == "opened" || body["action"] == "synchronize")'
+    template:
+      apiVersion: v1alpha1
+      name: java-openliberty-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: java-openliberty-build-push-pl-pullrequest-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-nodejs-express-push-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("nodejs-express:") && body["webhooks-tekton-event-type"] == "push" && body["webhooks-tekton-git-branch"] == "master"'
+    template:
+      apiVersion: v1alpha1
+      name: nodejs-express-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: nodejs-express-build-push-pl-push-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-nodejs-express-pullrequest-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-appsody-config"]["stack"].contains("nodejs-express:") && body["webhooks-tekton-event-type"] == "pull_request" && body["webhooks-tekton-git-branch"] != "master" && (body["action"] == "opened" || body["action"] == "synchronize")'
+    template:
+      apiVersion: v1alpha1
+      name: nodejs-express-build-push-pl-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: nodejs-express-build-push-pl-pullrequest-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-webhook-trigger-binding
+  - name: kabanero-monitor-task-event
+    interceptors:
+    - cel:
+        filter: 'body["webhooks-tekton-event-type"] == "pull_request" && body["webhooks-tekton-git-branch"] != "master" && (body["action"] == "opened" || body["action"] == "synchronize")'
+    template:
+      apiversion: v1alpha1
+      name: monitor-task-template
+    bindings:
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: monitor-task-github-binding
+    - apiversion: v1alpha1
+      kind: TriggerBinding
+      name: kabanero-events-monitor-task-binding
+

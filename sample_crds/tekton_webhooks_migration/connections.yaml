@@ -1,0 +1,15 @@
+apiVersion: events.kabanero.io/v1alpha1
+kind: EventConnections
+metadata:
+  name: example-connections
+spec:
+  connections:
+    - from: 
+        mediator:
+            name: example-webhook-mediator
+            mediation: example-webhook
+            destination: dest
+      to:
+        - https:
+            - url: "http://el-kabanero-event-listener.tekton-pipelines.svc.cluster.local:8080"
+              insecure: true

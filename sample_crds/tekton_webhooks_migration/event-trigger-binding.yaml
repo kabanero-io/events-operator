@@ -1,0 +1,26 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: kabanero-events-webhook-trigger-binding
+spec:
+  params:
+  - name: webhooks-tekton-release-name
+    value: $(body.webhooks-tekton-release-name)
+  - name: webhooks-tekton-target-namespace
+    value: $(body.webhooks-tekton-target-namespace)
+  - name: webhooks-tekton-service-account
+    value: $(body.webhooks-tekton-service-account)
+  - name: webhooks-tekton-git-server
+    value: $(body.webhooks-tekton-git-server)
+  - name: webhooks-tekton-git-org
+    value: $(body.webhooks-tekton-git-org)
+  - name: webhooks-tekton-git-repo
+    value: $(body.webhooks-tekton-git-repo)
+  - name: webhooks-tekton-pull-task
+    value: $(body.webhooks-tekton-pull-task)
+  - name: webhooks-tekton-ssl-verify
+    value: $(body.webhooks-tekton-ssl-verify)
+  - name: webhooks-tekton-insecure-skip-tls-verify
+    value: $(body.webhooks-tekton-insecure-skip-tls-verify)
+  - name: webhooks-tekton-docker-registry
+    value: $(body.webhooks-tekton-docker-registry)

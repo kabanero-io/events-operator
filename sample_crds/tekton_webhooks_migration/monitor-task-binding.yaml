@@ -1,0 +1,26 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: kabanero-events-monitor-task-binding
+spec:
+  params:
+  - name: commentsuccess
+    value: $(body.commentsuccess)
+  - name: commentfailure
+    value: $(body.commentfailure)
+  - name: commenttimeout
+    value: $(body.commenttimeout)
+  - name: commentmissing
+    value: $(body.commentmissing)
+  - name: gitsecretname
+    value: $(body.gitsecretname)
+  - name: gitsecretkeyname
+    value: $(body.gitsecretkeyname)
+  - name: dashboardurl
+    value: $(body.dashboardurl)
+  - name: insecure-skip-tls-verify
+    value: $(body.webhooks-tekton-insecure-skip-tls-verify)
+  - name: provider
+    value: $(body.provider)
+  - name: apiurl
+    value: $(body.apiurl)
