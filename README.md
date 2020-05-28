@@ -1029,6 +1029,7 @@ spec:
             mediation: webhook
             destination: dest
       to:
+        - https:
             - urlExpression:  body["webhooks-kabanero-tekton-listener"]
               insecure: true
     - from: 
