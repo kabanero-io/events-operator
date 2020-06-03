@@ -951,8 +951,8 @@ spec:
   createRoute: true
   repositories:
     - github:
-        secret: ghe-https-secret
-        webhookSecret: ghe-webhook-secret
+        secret: my-github-secret
+        webhookSecret: my-webhook-secret
   mediations:
     - name: webhook
       selector:
@@ -1028,6 +1028,7 @@ spec:
             mediation: webhook
             destination: dest
       to:
+        - https:
             - urlExpression:  body["webhooks-kabanero-tekton-listener"]
               insecure: true
     - from: 
