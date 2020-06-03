@@ -160,9 +160,9 @@ func DownloadYAML(kubeClient client.Client, namespace string, secretName string,
 // DownloadFileFromGithub Downloads a file and returns: bytes of the file, true if file exists, and any error
 func DownloadFileFromGithub(owner, repository, fileName, ref, githubURL, user, token string, isEnterprise bool) ([]byte, bool, error) {
 
-	if klog.V(5) {
-		klog.Infof("downloadFileFromGithub %v, %v, %v, %v, %v, %v, %v", owner, repository, fileName, ref, githubURL, user, isEnterprise)
-	}
+//	if klog.V(5) {
+		klog.Infof("downloadFileFromGithub owner: %v, repo: %v, file: %v, ref: %v, githubURL: %v, user: %v, isEnterprise: %v", owner, repository, fileName, ref, githubURL, user, isEnterprise)
+//	}
 
 	ctx := context.Background()
 
@@ -204,6 +204,7 @@ func DownloadFileFromGithub(owner, repository, fileName, ref, githubURL, user, t
 	   	buf, err := ioutil.ReadAll(rc)
 	*/
 	fileContent, _, resp, err := client.Repositories.GetContents(ctx, owner, repository, fileName, options)
+    klog.Infof("downloadFileFromGithub status code: %v", resp.Response.StatusCode)
 	if resp.Response.StatusCode == 200 {
 		if fileContent != nil {
 			if fileContent.Content == nil {

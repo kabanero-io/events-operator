@@ -23,7 +23,7 @@ generate: setup
 build-image: setup
 	operator-sdk build $(IMAGE):$(IMAGE_TAG)
 
-push-image:
+push-image: build-image
 	docker push $(IMAGE):$(IMAGE_TAG)
 
 .apply-crds: $(CRDS)
