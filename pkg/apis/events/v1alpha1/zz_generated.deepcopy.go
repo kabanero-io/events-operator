@@ -396,6 +396,17 @@ func (in *EventMediatorSpec) DeepCopyInto(out *EventMediatorSpec) {
 			}
 		}
 	}
+	if in.Variables != nil {
+		in, out := &in.Variables, &out.Variables
+		*out = new([]EventMediationVariable)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]EventMediationVariable, len(*in))
+			for i := range *in {
+				(*in)[i].DeepCopyInto(&(*out)[i])
+			}
+		}
+	}
 	if in.Mediations != nil {
 		in, out := &in.Mediations, &out.Mediations
 		*out = new([]EventMediationImpl)

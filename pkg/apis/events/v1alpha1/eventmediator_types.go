@@ -24,6 +24,9 @@ type EventMediatorSpec struct {
     CreateRoute    bool `json:"createRoute,omitempty"`
     Repositories *[]EventRepository `json:"repositories,omitempty"`
 
+    /* global variables */
+    Variables *[]EventMediationVariable `json:"variables,omitempty"`
+
     // ImportMediations  *[]string `json:"importMediations,omitempty"` // default is to import everything unless code is specified
     Mediations *[]EventMediationImpl `json:"mediations,omitempty"`
     // Functions *[]EventFunctionImpl `json:"functions,omitempty"`

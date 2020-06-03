@@ -985,8 +985,24 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
         }
     }
 
+    if mediator.Spec.Variables != nil {
+       /* Set global variables */
+       for _, variable := range *mediator.Spec.Variables  {
+           if variable.ValueExpression != nil {
+               env, err = p.setOneVariable(env, variable.Name, *variable.ValueExpression, variables)
+               if  err != nil {
+                   return nil, err
+               }
+           } else if variable.Value != nil {
+               env, err = p.setOneVariable(env, variable.Name, "\""+ *variable.Value + "\"", variables)
+               if  err != nil {
+                   return nil, err
+               }
+           }
+       }
+    }
     if mediationImpl.Variables != nil {
-       /* Set all additional variables */
+       /* Set mediation variables */
        for _, variable := range *mediationImpl.Variables  {
            if variable.ValueExpression != nil {
                env, err = p.setOneVariable(env, variable.Name, *variable.ValueExpression, variables)
@@ -1001,7 +1017,6 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            }
        }
     }
-
 
 	return env, nil
 }
