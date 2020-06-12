@@ -393,7 +393,7 @@ https://github.com/kabanero-io/events-operator
 
 - Where can L2/L3 find more/related info?
   - Specifications: https://github.com/kabanero-io/events-operator
-  - Official Documentation: TBD
+  - Official Documentation: https://www-03preprod.ibm.com/support/knowledgecenter/SSCSJL_4.2.x/guides/integrating-events-operator/integrating-events-operator.html
 
 ## Summary
 
