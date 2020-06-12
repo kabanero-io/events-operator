@@ -524,20 +524,21 @@ Edit and apply the following yaml to use the default stacks and events based pip
 
 ```yaml
 apiVersion: kabanero.io/v1alpha2
-kind: Kabanero
-metadata:
-  name: kabanero
-spec:
-  stacks:
-    repositories:
-    - name: central
-      https:
-        url: https://github.com/kabanero-io/kabanero-stack-hub/releases/download/0.9.0/kabanero-stack-hub-index.yaml
-    pipelines:
-    - id: default
-      sha256: b4ef64ab464941603add8b5c0957b65463dc9bbbbb63b93eb55cf1ba6de733c6
-      https:
-        url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.0/kabanero-events-pipelines.tar.gz
+  kind: Kabanero
+  metadata:
+    name: kabanero
+  spec:
+    version: "0.9.1"
+    stacks:
+      repositories:
+      - name: central
+        https:
+          url: https://github.com/kabanero-io/collections/releases/download/0.9.0/kabanero-index.yaml
+      pipelines:
+      - id: default
+        sha256: caf603b69095ec3d128f1c2fa964a2964509854e306fb3c5add8addc8f7f7b71
+        https:
+          url: https://github.com/kabanero-io/kabanero-pipelines/releases/download/0.9.1/kabanero-events-pipelines.tar.gz
 ```
 
 
