@@ -550,7 +550,7 @@ The mediator needs an API token to access github to read configuration files suc
 
 If you need to create a new secret, edit and apply the following secret:
 
-```
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -561,7 +561,7 @@ metadata:
 type: kubernetes.io/basic-auth
 stringData:
   username: <user name>
-  password:  <API token>
+  password: <API token>
 ```
 
 Note:
