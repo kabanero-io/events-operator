@@ -5,6 +5,7 @@ import (
 )
 
 const (
+    DEFAULT_HTTP_PORT = 9080
     DEFAULT_HTTPS_PORT = 9443
 )
 
@@ -21,6 +22,7 @@ type EventMediatorSpec struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
     CreateListener  bool `json:"createListener,omitempty"`
+    InsecureListener bool `json:"insecureListener,omitempty"`
     CreateRoute    bool `json:"createRoute,omitempty"`
     Repositories *[]EventRepository `json:"repositories,omitempty"`
 

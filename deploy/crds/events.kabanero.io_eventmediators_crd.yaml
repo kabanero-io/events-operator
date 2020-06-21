@@ -39,6 +39,8 @@ spec:
               type: boolean
             createRoute:
               type: boolean
+            insecureListener:
+              type: boolean
             mediations:
               description: ImportMediations  *[]string `json:"importMediations,omitempty"`
                 // default is to import everything unless code is specified

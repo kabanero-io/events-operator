@@ -563,8 +563,13 @@ func parseAssignment(statement string) (string, string, error ) {
           return "", statement, nil
          // return "", "", fmt.Errorf("not an assignment statement: %v", statement)
     }
-    name := statement[0:index]
-    value := statement[:index+1]
+    if index < len(statement)-1 && statement[index+1] == '=' {
+          // first '=' is not a real assignment, but a test for equality
+          return "", statement, nil
+    }
+   
+    name := strings.Trim(statement[0:index], " ")
+    value := statement[index+1:]
     return name, value, nil
 }
 
