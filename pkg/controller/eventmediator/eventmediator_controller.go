@@ -963,7 +963,7 @@ func sendMessage(url string, insecure bool, timeout time.Duration, payload []byt
     }
 
     defer resp.Body.Close()
-    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated  && resp.StatusCode != http.StatusAccepted {
         return fmt.Errorf("Send to %v failed with http status %v", url, resp.Status)
     }
 

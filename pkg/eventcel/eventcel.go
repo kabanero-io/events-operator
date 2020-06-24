@@ -166,6 +166,7 @@ const (
     WEBHOOKS_KABANERO_TEKTON_LISTENER = "body.webhooks-kabanero-tekton-listener"
     WEBHOOKS_TEKTON_GITHUB_SECRET_NAME = "body.webhooks-tekton-github-secret-name"
     WEBHOOKS_TEKTON_GITHUB_SECRET_KEY_NAME = "body.webhooks-tekton-github-secret-key-name"
+    WEBHOOKS_TEKTON_TARGET_NAMESPACE = "body.webhooks-tekton-target-namespace"
     UNKNOWN_LISTENER = "http://UNKNOWN_KABAKERO_TEKTON_LISTENER"
     HEADS = "heads"
     HEAD = "head"
@@ -929,6 +930,12 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        if  err != nil {
           return nil, err
        }
+
+       env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_TARGET_NAMESPACE,  "\"" + eventenv.GetEventEnv().Namespace +"\"", variables)
+       if  err != nil {
+          return nil, err
+       }
+
        /* This is decided by the event listener
        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_MONITOR_VARIABLE,  "body[\"webhooks-tekton-event-type\"] == \"pull_request\"? true : false ", variables)
        if  err != nil {
@@ -2215,10 +2222,21 @@ func convertToHeaderMap(value interface{}) (map[string][]string, error) {
 		values := make([]string, 0)
 		for i := 0; i < mapValue.Len(); i++ {
 			element := mapValue.Index(i)
-			elementStr, ok := element.Interface().(string)
-			if !ok {
-				return nil, fmt.Errorf("convertToHeaderMap value of %v not array or slice of string: %v", mapKey, mapValue)
-			}
+            interf := element.Interface()
+            var elementStr string
+            refVal, ok := interf.(ref.Val)
+            if ok {
+                var err error
+                elementStr, err = valToString(refVal)
+                if err != nil {
+				    return nil, fmt.Errorf("convertToHeaderMap value of key %v at position %v is ref.Val, but can't be convereted to string. error: %v", mapKey, i, err)
+                }
+            } else {
+			    elementStr, ok = interf.(string)
+			    if !ok {
+    				return nil, fmt.Errorf("convertToHeaderMap value of key %v at position %v not string. value: %v, kind: %v, type: %v", mapKey, i, element, element.Kind(), element.Type())
+    			}
+            }
 			values = append(values, elementStr)
 		}
 		ret[mapKeyStr] = values
@@ -2283,7 +2301,7 @@ func (p *Processor) sendEventCEL(refs ...ref.Val) ref.Val {
 	if numParams == 3 {
 		headerValue, err = convertToHeaderMap(header.Value())
 		if err != nil {
-			return types.ValOrErr(header, "sendEventCEL unable to convert header to map[string][]string: %v", header)
+			return types.ValOrErr(header, "sendEventCEL unable to convert header to map[string][]string: %v, error: %v", header, err)
 		}
 	}
 

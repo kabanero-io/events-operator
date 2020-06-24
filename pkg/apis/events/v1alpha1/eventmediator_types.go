@@ -26,10 +26,10 @@ type EventMediatorSpec struct {
     CreateRoute    bool `json:"createRoute,omitempty"`
     Repositories *[]EventRepository `json:"repositories,omitempty"`
 
-    /* global variables */
+    // global variables 
     Variables *[]EventMediationVariable `json:"variables,omitempty"`
 
-    // ImportMediations  *[]string `json:"importMediations,omitempty"` // default is to import everything unless code is specified
+    // mediations
     Mediations *[]EventMediationImpl `json:"mediations,omitempty"`
     // Functions *[]EventFunctionImpl `json:"functions,omitempty"`
 }
@@ -77,7 +77,10 @@ type EventMediationImpl  struct {
     // Input string `json:"input,omitempty"`
     SendTo []string `json:"sendTo,omitempty"`
     Selector *EventMediationSelector `json:"selector,omitempty"`
+
+    // local variables
     Variables *[]EventMediationVariable `json:"variables,omitempty"`
+
     Body []EventStatement `json:"body,omitempty"`
 }
 
