@@ -82,7 +82,7 @@ func (listenerMgr *ListenerManagerDefault) NewListener(handler http.Handler, opt
     listenerMgr.mutex.Lock()
     defer listenerMgr.mutex.Unlock()
 
-	if options.Port != 0 {
+	if options.Port == 0 {
 		options.Port = defaultHttpPort
 	}
 	port := options.Port
@@ -94,17 +94,19 @@ func (listenerMgr *ListenerManagerDefault) NewListener(handler http.Handler, opt
 	}
 
 	if err := listenerMgr.addListener(port, listener); err != nil {
+        klog.Errorf("Error adding port %v to listener manager: %v", port, err)
 		return err
 	}
 
 	/* start listener thread */
+    klog.Infof("Starting listener thread for port %v", port)
 	go func() {
-		klog.Infof("Listener thread started for Port %v", port)
+		klog.Infof("Listener thread started for port %v", port)
 		err := http.ListenAndServe(":"+strconv.Itoa(int(port)), handler)
 		if err != nil {
-			klog.Errorf("Listener thread error for Port %v, error: %v", port, err)
+			klog.Errorf("Listener thread error for port %v, error: %v", port, err)
 		}
-		klog.Infof("Listener thread stopped for Port %v", port)
+		klog.Infof("Listener thread stopped for port %v", port)
 	}()
 
 	return nil
@@ -115,6 +117,9 @@ func (listenerMgr *ListenerManagerDefault) NewListener(handler http.Handler, opt
 
 // NewListener creates a new HTTPS event listener
 func (listenerMgr *ListenerManagerDefault) NewListenerTLS(handler http.Handler, options ListenerOptions) error {
+    listenerMgr.mutex.Lock()
+    defer listenerMgr.mutex.Unlock()
+
 	if options.Port == 0 {
 		options.Port = defaultHttpsPort
 	}
@@ -128,7 +133,7 @@ func (listenerMgr *ListenerManagerDefault) NewListenerTLS(handler http.Handler, 
 		options.TLSKeyPath = defaultTLSKeyPath
 	}
 
-	klog.Infof("Starting TLS listener on Port %v", port)
+	klog.Infof("Starting TLS listener on port %v", port)
 
 	if _, err := os.Stat(options.TLSCertPath); os.IsNotExist(err) {
 		klog.Fatalf("TLS certificate '%s' not found: %v", options.TLSCertPath, err)
@@ -144,25 +149,25 @@ func (listenerMgr *ListenerManagerDefault) NewListenerTLS(handler http.Handler, 
 	}
 
 	if err := listenerMgr.addListener(port, listener); err != nil {
+        klog.Errorf("Error adding port %v to listener manager: %v", port, err)
 		return err
 	}
 
 	/* start listener thread */
+    klog.Infof("Strating listener thread for port %v", port)
 	go func() {
-		klog.Infof("TLS Listener thread started for Port %v", port)
+		klog.Infof("TLS Listener thread started for port %v", port)
 		err := http.ListenAndServeTLS(":"+strconv.Itoa(int(port)), options.TLSCertPath, options.TLSKeyPath, handler)
 		if err != nil {
-			klog.Infof("TLS Listener thread error for Port %v, error: %v  ", port, err)
+			klog.Infof("TLS Listener thread error for port %v, error: %v  ", port, err)
 		}
-		klog.Infof("TLS Listener thread ended for Port %v", port)
+		klog.Infof("TLS Listener thread ended for port %v", port)
 	}()
 
 	return nil
 }
 
 func (listenerMgr *ListenerManagerDefault) addListener(port int32, listener *listenerInfo) error {
-	listenerMgr.mutex.Lock()
-	defer listenerMgr.mutex.Unlock()
 
 	if _, exists := listenerMgr.listeners[port]; exists {
 		return fmt.Errorf("listener on Port %v already exists", port)

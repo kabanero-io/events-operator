@@ -224,9 +224,19 @@ func (r *ReconcileEventMediator) Reconcile(request reconcile.Request) (reconcile
                     if err != nil {
                         return reconcile.Result{}, err
                     }
-                    err = env.ListenerMgr.NewListenerTLS(listenerHandler, listeners.ListenerOptions{
+                    if instance.Spec.InsecureListener {
+                        klog.Infof("Creating new listener");
+                        err = env.ListenerMgr.NewListener(listenerHandler, listeners.ListenerOptions{
                         Port: port,
-                    })
+                        })
+                        klog.Infof("Returned from creating new listener, error: %v", err);
+                    } else {
+                        klog.Infof("Creating new TLS listener");
+                        err = env.ListenerMgr.NewListenerTLS(listenerHandler, listeners.ListenerOptions{
+                        Port: port,
+                        })
+                        klog.Infof("Returned from creating new TLS listener. error: %v", err);
+                    }
                     if err != nil {
                          return reconcile.Result{}, err
                     }
@@ -429,6 +439,28 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
     }
     ports := generateDeploymentPorts(mediator)
 
+    volumeMounts := []corev1.VolumeMount {
+                     {
+                     Name: "listener-certificates",
+                     ReadOnly: true,
+                     MountPath: "/etc/tls",
+                     },
+                }
+     volumes := []corev1.Volume {
+                  {
+                      Name: "listener-certificates",
+                      VolumeSource: corev1.VolumeSource {
+                          Secret: &corev1.SecretVolumeSource{
+                              SecretName: mediator.Name,
+                          },
+                      },
+                  },
+                }
+    if mediator.Spec.InsecureListener {
+        volumeMounts  = make([]corev1.VolumeMount, 0)
+        volumes = make([]corev1.Volume, 0)
+    }
+
     dep := &appsv1.Deployment{
         ObjectMeta: metav1.ObjectMeta{
             Name:      mediator.Name,
@@ -453,24 +485,9 @@ func (r *ReconcileEventMediator) deploymentForEventMediator(mediator *eventsv1al
                         Command: []string{"entrypoint"},
                         Ports: ports,
                         Env: env,
-                        VolumeMounts: []corev1.VolumeMount {
-                             {
-                             Name: "listener-certificates",
-                             ReadOnly: true,
-                             MountPath: "/etc/tls",
-                             },
-                        },
+                        VolumeMounts: volumeMounts,
                     }},
-                    Volumes: []corev1.Volume {
-                      {
-                          Name: "listener-certificates",
-                          VolumeSource: corev1.VolumeSource {
-                              Secret: &corev1.SecretVolumeSource{
-                                  SecretName: mediator.Name,
-                              },
-                          },
-                      },
-                    },
+                    Volumes: volumes,
                 },
             },
         },
@@ -487,16 +504,27 @@ func labelsForEventMediator(name string) map[string]string {
 
 /* Get port in listener config. If port == 0, return default port. */
 func getListenerPort(mediator *eventsv1alpha1.EventMediator) int32 {
+    if mediator.Spec.InsecureListener  {
+        return eventsv1alpha1.DEFAULT_HTTP_PORT
+    }
+
     return eventsv1alpha1.DEFAULT_HTTPS_PORT
 }
 
 func generateServicePorts(mediator *eventsv1alpha1.EventMediator, reqLogger logr.Logger) []corev1.ServicePort {
     ports := make([]corev1.ServicePort, 0)
     port := getListenerPort(mediator)
-    ports = append(ports, corev1.ServicePort {
-           Port:  int32(443),
-           TargetPort: intstr.IntOrString { IntVal: port } ,
-       } )
+    if mediator.Spec.InsecureListener {
+        ports = append(ports, corev1.ServicePort {
+               Port:  int32(80),
+               TargetPort: intstr.IntOrString { IntVal: port } ,
+           } )
+    } else {
+        ports = append(ports, corev1.ServicePort {
+               Port:  int32(443),
+               TargetPort: intstr.IntOrString { IntVal: port } ,
+           } )
+    }
     return ports
 }
 
@@ -507,12 +535,17 @@ func (r *ReconcileEventMediator) serviceForEventMediator(mediator *eventsv1alpha
 
     reqLogger.Info(fmt.Sprintf( "mediator: %v, ports: %v", mediator, servicePorts))
 
+    annotationName := "service.beta.openshift.io/serving-cert-secret-name"
+    if mediator.Spec.InsecureListener {
+         annotationName = "event-mediator-name"
+    }
+
     service := &corev1.Service{
         ObjectMeta: metav1.ObjectMeta{
             Name:      mediator.Name,
             Namespace: mediator.Namespace,
             Annotations: map[string]string {
-                 "service.beta.openshift.io/serving-cert-secret-name": mediator.Name,
+                 annotationName: mediator.Name,
             },
         },
         Spec: corev1.ServiceSpec {
@@ -930,7 +963,7 @@ func sendMessage(url string, insecure bool, timeout time.Duration, payload []byt
     }
 
     defer resp.Body.Close()
-    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated  && resp.StatusCode != http.StatusAccepted {
         return fmt.Errorf("Send to %v failed with http status %v", url, resp.Status)
     }
 
