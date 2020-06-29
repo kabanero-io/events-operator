@@ -154,6 +154,7 @@ const (
     REF      = "ref"
 
     APPSODY_CONFIG_YAML = ".appsody-config.yaml"
+    DEVFILE = "devfile.yaml"
     STACK = "stack"
     WEBHOOKS_TEKTON_GIT_SERVER_VARIABLE = "body.webhooks-tekton-git-server"
     WEBHOOKS_TEKTON_GIT_ORG_VARIABLE = "body.webhooks-tekton-git-org"
@@ -962,37 +963,43 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
            }
        }
 
-       if mediationImpl.Selector!= nil && mediationImpl.Selector.RepositoryType != nil &&
-             mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
-           stack, ok := repoTypeValue[STACK]
-           if !ok {
-               return  nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
-           }
-           stackStr, ok := stack.(string)
-           if !ok {
-               return  nil, fmt.Errorf("stack %v not string in appsody-configy.yaml: %v", stack, repoTypeValue)
-           }
-           p.statusParams.AddParameter(status.PARAM_STACK, stackStr)
-           components := strings.Split(stackStr, ":")
-           if len(components) != 2 {
-               return  nil, fmt.Errorf("invalid stack value in appsody-configy.yaml:%v  ", stackStr)
-           }
-    
-           listener := ""
-           version := "unknown"
-           if kabaneroIntegration {
-               listener, version, err = utils.FindEventListenerForStack(client, namespace, components[0], components[1])
-               if err != nil {
-                   return nil, err
+       if mediationImpl.Selector!= nil && mediationImpl.Selector.RepositoryType != nil {
+           if mediationImpl.Selector.RepositoryType.File ==  APPSODY_CONFIG_YAML {
+               stack, ok := repoTypeValue[STACK]
+               if !ok {
+                   return  nil, fmt.Errorf("Unable to find stack in appsody-configy.yaml: %v", repoTypeValue)
                }
-            }
-            if listener == "" {
-                listener = UNKNOWN_LISTENER
-            }
-            klog.Infof("For stack %s, found event listener %s, version: %v", stackStr, listener, version)
-            env, err = p.setOneVariable(env, WEBHOOKS_KABANERO_TEKTON_LISTENER,  "\"" + listener + "\"", variables)
-            if  err != nil {
-               return nil, err
+               stackStr, ok := stack.(string)
+               if !ok {
+                   return  nil, fmt.Errorf("stack %v not string in appsody-configy.yaml: %v", stack, repoTypeValue)
+               }
+               p.statusParams.AddParameter(status.PARAM_STACK, stackStr)
+               components := strings.Split(stackStr, ":")
+               if len(components) != 2 {
+                   return  nil, fmt.Errorf("invalid stack value in appsody-configy.yaml:%v  ", stackStr)
+               }
+
+               listener := ""
+               version := "unknown"
+               if kabaneroIntegration {
+                   listener, version, err = utils.FindEventListenerForStack(client, namespace, components[0], components[1])
+                   if err != nil {
+                       return nil, err
+                   }
+                }
+                if listener == "" {
+                    listener = UNKNOWN_LISTENER
+                }
+                klog.Infof("For stack %s, found event listener %s, version: %v", stackStr, listener, version)
+                env, err = p.setOneVariable(env, WEBHOOKS_KABANERO_TEKTON_LISTENER,  "\"" + listener + "\"", variables)
+                if  err != nil {
+                   return nil, err
+                }
+            } else if mediationImpl.Selector.RepositoryType.File ==  DEVFILE {
+               //metadata, ok := repoTypeValue[METADATA]
+               //if !ok {
+               //    return  nil, fmt.Errorf("Unable to find metadata in devfile: %v", repoTypeValue)
+               //}
             }
         }
     }
