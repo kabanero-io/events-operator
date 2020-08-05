@@ -238,6 +238,12 @@ func IsHeaderGithub(header map[string][]string) bool {
     return ok
 }
 
+func IsHeaderGithubEnterprise(header map[string][]string) bool {
+
+    _, isEnterprise := header[http.CanonicalHeaderKey("x-github-enterprise-host")]
+    return isEnterprise
+}
+
 /* Parse Github URL into server, org, and repo 
   Input: url for the github server, e.g., https://github.com/org/repo
   OUtput:

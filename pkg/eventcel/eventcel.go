@@ -168,6 +168,9 @@ const (
     WEBHOOKS_TEKTON_GITHUB_SECRET_NAME = "body.webhooks-tekton-github-secret-name"
     WEBHOOKS_TEKTON_GITHUB_SECRET_KEY_NAME = "body.webhooks-tekton-github-secret-key-name"
     WEBHOOKS_TEKTON_TARGET_NAMESPACE = "body.webhooks-tekton-target-namespace"
+    WEBHOOKS_TEKTON_GITOPS_REPOSITORY_TYPE = "body.webhooks-tekton-gitops-repository-type"
+    WEBHOOKS_TEKTON_GITOPS_COMMIT_USER_NAME = "body.webhooks-tekton-gitops-commit-user-name"
+    WEBHOOKS_TEKTON_GITOPS_COMMIT_USER_EMAIL = "body.webhooks-tekton-gitops-commit-user-email"
     UNKNOWN_LISTENER = "http://UNKNOWN_KABAKERO_TEKTON_LISTENER"
     HEADS = "heads"
     HEAD = "head"
@@ -176,7 +179,8 @@ const (
     PULL_REQUEST = "pull_request"
     PUSH  = "push"
     AFTER = "after"
-
+    PUSHER = "pusher"
+    EMAIL = "email"
 )
 
 const (
@@ -804,7 +808,48 @@ func (p *Processor) initializeCELEnv(header map[string][]string, body map[string
        }
     }
 
-   if utils.IsHeaderGithub(header) {
+    if utils.IsHeaderGithub(header) {
+        gitopsRepositoryType := "github"
+        if utils.IsHeaderGithubEnterprise(header) {
+            gitopsRepositoryType = "ghe"
+        }
+        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GITOPS_REPOSITORY_TYPE,  "\"" + gitopsRepositoryType + "\"", variables)
+        if  err != nil {
+           return nil, err
+        }
+
+        pusherUser := ""
+        pusherEmail := ""
+        pusherObj, exists := body[PUSHER]
+        if exists {
+            pusherMap, ok := pusherObj.(map[string]interface{})
+            if ok {
+                 nameObj, exists := pusherMap[NAME]
+                 if exists {
+                     name, ok := nameObj.(string)
+                     if ok {
+                         pusherUser = name
+                     }
+                 }
+                 emailObj, exists := pusherMap[EMAIL]
+                 if exists {
+                     email, ok := emailObj.(string)
+                     if ok {
+                         pusherEmail = email
+                     }
+                 }
+            }
+        }
+
+        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GITOPS_COMMIT_USER_NAME,  "\"" + pusherUser + "\"", variables)
+        if  err != nil {
+            return nil, err
+        }
+        env, err = p.setOneVariable(env, WEBHOOKS_TEKTON_GITOPS_COMMIT_USER_EMAIL,  "\"" + pusherEmail + "\"", variables)
+        if  err != nil {
+           return nil, err
+        }
+
        /* evaluate pre-defined variables for body.repository.html_url */
        repository, exists := body[REPOSITORY]
        if exists {
